@@ -41,22 +41,28 @@ else
     msrOptions=(${msrOptions[@]} "--np" "[\\\\/]*(\.git)[\\\\/]")
 fi
 
+# if path has one directory, add file filter
+if [ ! -f "$PathToDo" ]; then
+    if [ "$hasFileFilter" != "1" ]; then
+        FileFilter=("-f" "\.(c|cpp|cxx|h|hpp|cs|java|scala|py|bat|cmd|ps1|sh)$")
+    else
+        FileFilter=("--pp" "\.(c|cpp|cxx|h|hpp|cs|java|scala|py|bat|cmd|ps1|sh)$")
+    fi
+fi
+
 echo "## Remove white spaces at each line end" | msr -PA -e .+
-msr ${msrOptions[@]} -p $PathToDo -it "(\S+)\s+$" -o '$1' -R -c Remove white spaces at each line end.
+msr ${msrOptions[@]} -p $PathToDo ${FileFilter[@]} -it "(\S+)\s+$" -o '$1' -R -c Remove white spaces at each line end.
 
 # echo "## Add a tail new line to files" | msr -PA -e .+
 # msr ${msrOptions[@]} -p $PathToDo -S -t "(\S+)$" -o '$1\n' -R -c Add a tail new line to files.
 
 echo "## Add/Delete to have only one tail new line in files" | msr -PA -e .+
-msr ${msrOptions[@]} -p $PathToDo -S -t "(\S+)\s*$" -o '$1\n' -R -c Add a tail new line to files.
+msr ${msrOptions[@]} -p $PathToDo ${FileFilter[@]} -S -t "(\S+)\s*$" -o '$1\n' -R -c Add a tail new line to files.
 
 echo "## Convert tab at head of each lines in a file, util all tabs are replaced." | msr -aPA -e .+
 function ConvertTabTo4Spaces() {
     if [ -d $PathToDo ]; then
-        if [ "$hasFileFilter" != "1" ]; then
-            FileFilterConvertTab=("-f" "\.(cpp|cxx|hp*|cs|java|scala|py|bat|cmd|ps1|sh)$")
-        fi
-        msr ${msrOptions[@]} -p $PathToDo ${FileFilterConvertTab[@]} -it "^(\s*)\t" -o '$1    ' -R -c Covert TAB to 4 spaces.
+        msr ${msrOptions[@]} -p $PathToDo ${FileFilter[@]} -it "^(\s*)\t" -o '$1    ' -R -c Covert TAB to 4 spaces.
     else
         msr ${msrOptions[@]} -p $PathToDo -it "^(\s*)\t" -o '$1    ' -R -c Covert TAB to 4 spaces.
     fi
