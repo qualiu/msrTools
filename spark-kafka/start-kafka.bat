@@ -8,7 +8,8 @@ SetLocal EnableExtensions EnableDelayedExpansion
 set StopAtFirst=%1
 if /I "%~1" == "true" set "StopAtFirst=1"
 
-call %~dp0\set-path-variables.bat || exit /b !ERRORLEVEL!
+call %~dp0\set-path-variables.bat 1 || exit /b !ERRORLEVEL!
+
 for /f "tokens=*" %%a in ('msr -z "%KAFKA_HOME%" -x \ -o \\ -PAC') do set "KAFKA_HOME_Pattern=%%a"
 
 if "%StopAtFirst%" == "1" (
