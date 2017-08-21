@@ -208,13 +208,36 @@ function Get-Installed-Directory($exeDirName, $exeName) {
 }
 
 function Download-7z() {
+    if ([IO.Directory]::Exists($App7zDir)) {
+        $exe7z = [System.IO.Directory]::GetFiles($App7zDir, "7z*.exe")[0]
+        if([IO.File]::Exists($exe7z)) {
+            $env:PATH = $App7zDir + ";" + $env:PATH
+            Write-Host -ForegroundColor Green "Already exists $exe7z"
+            return
+        } else {
+            Write-Host -ForegroundColor Yellow "Will remove $App7zDir"
+            Remove-Item -Recurse -Force $App7zDir
+        }
+    }
+
     $url, $name = Get-Url-Name "7z" $Home7z "<a href=`"(.*?/)?(7z[\w\.-]*\.zip)`">"
     $7zSavePath = Download-File $url $DownloadsDir $name
-    unzip -o $7zSavePath -d $App7zDir >$null
+    
+    # unzip -o $7zSavePath -d $App7zDir >$null
+    Add-Type -A System.IO.Compression.FileSystem
+    [IO.Compression.ZipFile]::ExtractToDirectory($7zSavePath, $App7zDir)
+
     $exe7z = [System.IO.Directory]::GetFiles($App7zDir, "7z*.exe")[0]
     
     if([System.IO.Path]::GetFileNameWithoutExtension($exe7z) -ine "7z") {
         Rename-Item $exe7z $App7zExe
+    }
+    
+    $env:PATH = $App7zDir + ";" + $env:PATH
+    $tool7z = $(Get-Command 7z.exe 2>$null).Source
+    if([String]::IsNullOrEmpty($tool7z) -or ![IO.File]::Exists($tool7z)) {
+        Write-Error "Not found 7z.exe in System nor $App7zDir. Please install 7-Zip"
+        exit -1
     }
 }
 
@@ -265,7 +288,6 @@ function Extract-ZipTarGz($tgzFile, $saveDirectory) {
             $tool7z = Join-Path $installed7zDir "7z.exe"
         } else {
             Download-7z
-            $env:PATH = $App7zDir + ";" + $env:PATH
             $tool7z = Join-Path $App7zDir "7z.exe"
         }
     }
@@ -422,7 +444,7 @@ function Update-Hadoop-Settings($hadoopDir) {
 <configuration>
   <property>
     <name>fs.default.name</name>
-    <value>hdfs://0.0.0.0:19000</value>
+    <value>hdfs://0.0.0.0:9000</value>
   </property>
   <property>
     <name>hadoop.tmp.dir</name>

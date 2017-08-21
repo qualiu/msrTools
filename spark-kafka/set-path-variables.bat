@@ -18,7 +18,17 @@ set "SkipSpark=%3"
 set "SkipHadoop=%4"
 
 call %~dp0\check-tools.bat
+
+if not "%SkipSpark%" == "0" set "ArgsForInitDownloading=-SkipSpark"
+if not "%SkipHadoop%" == "0" set "ArgsForInitDownloading=!ArgsForInitDownloading! -SkipHadoop"
+
+powershell -f %TestRootDir%\init-download.ps1 !ArgsForInitDownloading!
+if !ERRORLEVEL! NEQ 0 (
+    echo init-download.ps1 return error = !ERRORLEVEL! | msr -aPA -t "error = (-?\d+)" -e "(\S+\.ps1)"
+)
+
 if !ERRORLEVEL! NEQ 0 exit /b !ERRORLEVEL!
+
 for /f "tokens=*" %%a in ('msr -z "%~dp0\app" -x \\ -o \ -aPAC') do set "AppRootDir=%%a"
 
 :: Get Hadoop directory
