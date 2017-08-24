@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     Check and download Kafka, Hadoop and Spark; Configure them to save data and log in itself directory.
-    Will not download each of them if there's already a version exists in $AppDir, except $IgnoreExisting used.
+    Will not overwrite each of them if there's already a version exists in $AppDir, except $ForceOverwriteConfig used.
     You can set environment variable ExtraDownloadRepository to avoid downloading from web.
     
 .PARAMETER KafkaVersion
@@ -26,7 +26,7 @@
 .PARAMETER SkipHadoop
     Skip downloading and configuring Hadoop if not need.
     
-.PARAMETER IgnoreExisting
+.PARAMETER ForceOverwriteConfig
     Usefull if you want to download another version and configure it, not skip if exists another version Kafka.
     
 .EXAMPLE
@@ -40,9 +40,15 @@ param(
       [Parameter(Mandatory = $false)][string] $SparkVersion = "2.1.0",
       [Parameter(Mandatory = $false)][int] $KafkaPartitions = 1,
       [Parameter(Mandatory = $false)][AllowEmptyString()][string] $ExtraDownloadRepository = "",
+      [Parameter(Mandatory = $false)][int] $ZookeeperPort = 2181,
+      [Parameter(Mandatory = $false)][int] $KafkaPort = 9092,
+      [Parameter(Mandatory = $false)][AllowEmptyString()][string] $HdfsHostIP = "localhost",
+      [Parameter(Mandatory = $false)][int] $HdfsPort = 9000,
+      [Parameter(Mandatory = $false)][int] $YarnResourceManagerPort = 8020,
+      [Parameter(Mandatory = $false)][int] $YarnNodeManagerPort = 45454,
       [switch] $SkipSpark,
       [switch] $SkipHadoop,
-      [switch] $IgnoreExisting
+      [switch] $ForceOverwriteConfig
       )
 
 $scriptDirectory = Convert-Path $(Split-Path $PSCommandPath -Parent -Resolve)
@@ -56,6 +62,7 @@ if ([String]::IsNullOrEmpty($ExtraDownloadRepository) -or -not [IO.Directory]::e
     }
 }
 
+$ToolDir = Join-Path $scriptDirectory "tools"
 $AppDir = Join-Path $scriptDirectory "app"
 $DownloadsDir = Join-Path $scriptDirectory "downloads"
 $WinutilsExeName = "winutils.exe"
@@ -77,10 +84,30 @@ $KafkaDirectoryNamePattern = "^kafka.*\d+"
 
 $TarExe = (Get-Command tar.exe 2>$null).Source
 
-function Create-Test-Directory($directory) {
+function Check-Create-Directory($directory) {
     if (-not $(Test-Path $directory)) {
         New-Item $directory -ItemType Directory >$null
     }
+}
+
+Check-Create-Directory $ToolDir
+
+if( -not $(Get-Command msr.exe > $null 2>$null) ) {
+    if (-not $(Test-Path $(Join-Path $ToolDir msr.exe))) {
+        Invoke-WebRequest -Uri https://github.com/qualiu/msr/blob/master/tools/msr.exe?raw=true -OutFile $(Join-Path $ToolDir msr.exe)
+    }
+    
+    $env:PATH = $ToolDir + ";" + $env:PATH
+}
+
+$ipList = ipconfig | msr -it ".*IPv4.*\s+(\d+\.[\d\.]+\d+)\s*$" -o '$1' -PAC
+$LocalIP = $ipList | where { $_ -match "192" }
+if ([String]::IsNullOrEmpty($LocalIP)) {
+    $LocalIP = $ipList[0]
+}
+
+if ([String]::IsNullOrEmpty($HdfsHostIP)) {
+    $HdfsHostIP = $LocalIP
 }
 
 function Get-Kafka-Download-Url-FileName-DirectoryName() {
@@ -335,20 +362,21 @@ function Update-Kafka-Settings($kafkaDir) {
         exit -1
     }
 
-    $zookeeperDataDir = Join-Path $(Join-Path $kafkaDir "data") "zookeeper"
+    $myKafkaRootDir = Join-Path $kafkaDir "my"
+    $zookeeperDataDir = Join-Path $(Join-Path $myKafkaRootDir "data") "zookeeper"
     $zookeeperDataDirReplace = $zookeeperDataDir -replace "\\","/"
 
-    $kafkaLogDir = Join-Path $kafkaDir "kafka-logs"
+    $kafkaLogDir = Join-Path $myKafkaRootDir "kafka-logs"
     $kafkaLogDirReplace = $kafkaLogDir -replace "\\","/"
 
     if (Test-Path $zookeeperDataDir) {
         Write-Host -ForegroundColor Yellow "Will clear zookeeper data directory: $zookeeperDataDir"
-        Remove-Item -Recurse -IgnoreExisting $zookeeperDataDir
+        Remove-Item -Recurse -Force $zookeeperDataDir
     }
 
     if (Test-Path $kafkaLogDir) {
         Write-Host -ForegroundColor Yellow "Will clear kafka log directory: $kafkaLogDir"
-        Remove-Item -Recurse -IgnoreExisting $kafkaLogDir
+        Remove-Item -Recurse -Force $kafkaLogDir
     }
 
     # msr -it "set\s+LOG_DIR=" -x / -o "\\" -f "\.(bat|cmd)$" -rp $KafkaDirectory  -R -O -c To avoid first time warning
@@ -356,9 +384,22 @@ function Update-Kafka-Settings($kafkaDir) {
     $kafkaConfigDir = Join-Path $kafkaDir "config"
     msr -it "^(\s*dataDir)\s*=.*$" -o "`$1=$zookeeperDataDirReplace" -p $(Join-Path $kafkaConfigDir "zookeeper.properties") -R -c Set zookeeper dataDir = $zookeeperDataDir
 
-    msr -it "^(\s*log.dirs)\s*=.*$" -o "`$1=$kafkaLogDirReplace" -p $(Join-Path $kafkaConfigDir "server.properties") -R -c Set kafka log.dirs = $zookeeperDataDir
+    $kafkaServerConfigFile = $(Join-Path $kafkaConfigDir "server.properties")
+    msr -it "^(\s*log.dirs)\s*=.*$" -o "`$1=$kafkaLogDirReplace" -p $kafkaServerConfigFile -R -c Set kafka log.dirs = $zookeeperDataDir
     
-    msr -it "^(\s*num.partitions)\s*=.*$" -o "`$1=$KafkaPartitions" -p $(Join-Path $kafkaConfigDir "server.properties") -R -c Set kafka num.partitions = $KafkaPartitions
+    msr -it "^(\s*num.partitions)\s*=.*$" -o "`$1=$KafkaPartitions" -p $kafkaServerConfigFile -R -c Set kafka num.partitions = $KafkaPartitions
+    
+    msr -rp $kafkaConfigDir -f properties -x 9092 -o $KafkaPort -R -c Replace kakfa port to $KafkaPort
+    msr -rp $kafkaConfigDir -f properties -x 2181 -o $ZookeeperPort -R -c Replace zookeeper port to $ZookeeperPort
+    msr -rp $kafkaConfigDir -f properties -it "^(\s*port)\s*=\s*(\d+)(.*)" -o "`$1=$KafkaPort`$3" -R -c Replace kafka port to $KafkaPort
+    if ( $LASTEXITCODE -eq 0 ) {
+        msr -rp $kafkaConfigDir -f properties -it "^(\s*port)\s*=\s*(\d+)(.*)"
+        if ( $LASTEXITCODE -eq 0 ) {
+            msr -rp $kafkaConfigDir -f properties -it "^(broker.id\s*=.+)" -o "`$0`nport=$KafkaPort" -R -c Add kafka port settings to $KafkaPort
+        }
+    }
+    
+    # msr -rp $kafkaConfigDir -f properties -it "^(\s*)#?(listeners)=\S+" -o "`$1`$2==PLAINTEXT://192.168.56.1:9292" -R -c Replace zookeeper port.
 }
 
 function Update-Or-Add-Setting($file, $findPattern, $replaceTo, $notFoundThenAdd="") {
@@ -391,7 +432,7 @@ function Check-Update-Config($file, $replaceTo, $checkExistPattern, $findPattern
     $allText = [IO.File]::ReadAllText($file)
     $mode = [System.Text.RegularExpressions.RegexOptions]::IgnoreCase -bor [System.Text.RegularExpressions.RegexOptions]::Singleline
     $regExist = New-Object System.Text.RegularExpressions.Regex($checkExistPattern, $mode)
-    if($regExist.IsMatch($allText)) {
+    if($regExist.IsMatch($allText) -and -not $ForceOverwriteConfig) {
         Write-Host -ForegroundColor Cyan "Not replace as file $file matched checkExistPattern: $checkExistPattern"
         return
     }
@@ -417,8 +458,8 @@ function Check-Copy-Template($file) {
     }
 }
 
-function Replace-Hadoop-Config-PlaceHolder($configContent, $hadoopRootDirectory, $dirHolder = "hadoop-root-to-be-replaced") {
-    $root = $hadoopRootDirectory.Replace("\", "/")
+function Replace-Hadoop-Config-PlaceHolder($configContent, $myHadoopDataLogRootDirectory, $dirHolder = "my_hadoop_datalog_root_to_be_replaced") {
+    $root = $myHadoopDataLogRootDirectory.Replace("\", "/")
     $configContent = $configContent.replace($dirHolder, "/" + $root)
     $configContent = $configContent.Replace("%USERNAME%", $env:USERNAME)
     return $configContent
@@ -430,6 +471,7 @@ function Update-Hadoop-Settings($hadoopDir) {
         exit -1
     }
 
+    $myHadoopDataLogRootDirectory = Join-Path $hadoopDir "my"
     $hadoopConfigDirectory = Join-Path $(Join-Path $hadoopDir "etc") "hadoop"
     # hadoop-env.cmd
     $hadoop_env_cmd = Join-Path $hadoopConfigDirectory "hadoop-env.cmd"
@@ -444,15 +486,32 @@ function Update-Hadoop-Settings($hadoopDir) {
 <configuration>
   <property>
     <name>fs.default.name</name>
-    <value>hdfs://0.0.0.0:9000</value>
+    <value>hdfs://${HdfsHostIP}:${HdfsPort}</value>
   </property>
   <property>
     <name>hadoop.tmp.dir</name>
-    <value>hadoop-root-to-be-replaced/tmp</value>
+    <value>my_hadoop_datalog_root_to_be_replaced/tmp</value>
   </property>
+  
+  <!-- Refresh proxyuser settings command: hdfs dfsadmin -refreshSuperUserGroupsConfiguration -->
+  <property>
+    <name>hadoop.proxyuser.qualiu.hosts</name>
+    <value>*</value>
+  </property>
+  
+  <property>
+    <name>hadoop.proxyuser.qualiu.groups</name>
+    <value>*</value>
+  </property>
+  
+  <property>
+    <name>hadoop.proxyuser.qualiu.users</name>
+    <value>*</value>
+  </property>
+  
 </configuration>
 "@
-    $configCoreSite = Replace-Hadoop-Config-PlaceHolder $configCoreSite $hadoopDir
+    $configCoreSite = Replace-Hadoop-Config-PlaceHolder $configCoreSite $myHadoopDataLogRootDirectory
     Check-Update-Config $core_site_xml $configCoreSite "<name>\s*fs.default.name"
 
     # hdfs-site.xml
@@ -463,9 +522,17 @@ function Update-Hadoop-Settings($hadoopDir) {
     <name>dfs.replication</name>
     <value>1</value>
   </property>
+   <property>
+   <name>dfs.namenode.name.dir</name>
+   <value>my_hadoop_datalog_root_to_be_replaced/namenode</value>
+ </property>
+ <property>
+   <name>dfs.datanode.data.dir</name>
+   <value>my_hadoop_datalog_root_to_be_replaced/datanode</value>
+ </property>
 </configuration>
 "@
-    $configHdfsSite = Replace-Hadoop-Config-PlaceHolder $configHdfsSite $hadoopDir
+    $configHdfsSite = Replace-Hadoop-Config-PlaceHolder $configHdfsSite $myHadoopDataLogRootDirectory
     Check-Update-Config $hdfs_site_xml $configHdfsSite "<name>\s*dfs.replication"
 
     # mapred-site.xml
@@ -485,7 +552,7 @@ function Update-Hadoop-Settings($hadoopDir) {
 
   <property>
     <name>yarn.apps.stagingDir</name>
-    <value>hadoop-root-to-be-replaced/user/%USERNAME%/staging</value>
+    <value>my_hadoop_datalog_root_to_be_replaced/user/%USERNAME%/staging</value>
   </property>
 
   <property>
@@ -495,7 +562,7 @@ function Update-Hadoop-Settings($hadoopDir) {
 
 </configuration>
 "@
-    $configMapredSite = Replace-Hadoop-Config-PlaceHolder $configMapredSite $hadoopDir
+    $configMapredSite = Replace-Hadoop-Config-PlaceHolder $configMapredSite $myHadoopDataLogRootDirectory
     Check-Copy-Template $mapred_site_xml
     Check-Update-Config $mapred_site_xml $configMapredSite "<name>\s*mapreduce.job.user.name"
 
@@ -505,7 +572,7 @@ function Update-Hadoop-Settings($hadoopDir) {
 <configuration>
   <property>
     <name>yarn.server.resourcemanager.address</name>
-    <value>0.0.0.0:8020</value>
+    <value>${HdfsHostIP}:${YarnResourceManagerPort}</value>
   </property>
 
   <property>
@@ -515,7 +582,7 @@ function Update-Hadoop-Settings($hadoopDir) {
 
   <property>
     <name>yarn.server.nodemanager.address</name>
-    <value>0.0.0.0:45454</value>
+    <value>${HdfsHostIP}:${YarnNodeManagerPort}</value>
   </property>
 
   <property>
@@ -530,22 +597,22 @@ function Update-Hadoop-Settings($hadoopDir) {
 
   <property>
     <name>yarn.server.nodemanager.remote-app-log-dir</name>
-    <value>hadoop-root-to-be-replaced/app-logs</value>
+    <value>my_hadoop_datalog_root_to_be_replaced/app-logs</value>
   </property>
 
   <property>
     <name>yarn.nodemanager.log-dirs</name>
-    <value>hadoop-root-to-be-replaced/userlogs</value>
+    <value>my_hadoop_datalog_root_to_be_replaced/userlogs</value>
   </property>
 
   <property>
     <name>yarn.server.mapreduce-appmanager.attempt-listener.bindAddress</name>
-    <value>0.0.0.0</value>
+    <value>${HdfsHostIP}</value>
   </property>
 
   <property>
     <name>yarn.server.mapreduce-appmanager.client-service.bindAddress</name>
-    <value>0.0.0.0</value>
+    <value>${HdfsHostIP}</value>
   </property>
 
   <property>
@@ -565,7 +632,7 @@ function Update-Hadoop-Settings($hadoopDir) {
 </configuration>
 "@
     Check-Copy-Template $yarn_site_xml
-    $configYarnSite = Replace-Hadoop-Config-PlaceHolder $configYarnSite $hadoopDir
+    $configYarnSite = Replace-Hadoop-Config-PlaceHolder $configYarnSite $myHadoopDataLogRootDirectory
     Check-Update-Config $yarn_site_xml $configYarnSite "<name>\s*yarn.server.resourcemanager.address"
     
     # dir /A:D /S /B test\app\hadoop-2.7.2 | msr --nt "(test|sources|examples)$|tomcat" -PAC
@@ -603,11 +670,16 @@ function Check-Download-Extract-App($url, $name, $appName, $appDirNamePattern) {
         exit -1
     }
     
-    Extract-ZipTarGz $tgz $AppDir
+    $foundDir = Get-App-Directory $appDirNamePattern
+    if ([String]::IsNullOrEmpty($foundDir)) {
+        Extract-ZipTarGz $tgz $AppDir
+    } else {
+        Write-Host -ForegroundColor Yellow "Found existed $appName and not extract $tgz to overwrite: $foundDir"
+    }
     
     $foundDir = Get-App-Directory $appDirNamePattern
     if (-not $(Test-Path $foundDir)) {
-        Write-Host -ForegroundColor Red "Not exist $appName directory : $foundDir, search pattern = '$appDirNamePattern'"
+        Write-Host -ForegroundColor Red "Not exist $appName directory: $foundDir, search pattern = '$appDirNamePattern'"
         exit -1
     }
 
@@ -627,36 +699,39 @@ function Download-Hadoop-Windows-Binaries() {
         exit -1
     }
 
+    $totalFiles = $matches.Count
+    
     if($files.Count -ge $matches.Count) {
+        Write-Host -ForegroundColor Cyan "Already exists $totalFiles files in $HadoopWindowsBinaryDownloadDir"
         return
     }
 
-    Write-Host -ForegroundColor Green "Downloading " $matches.Count " Hadoop winutils files save to $HadoopWindowsBinaryDownloadDir"
+    Write-Host -ForegroundColor Green "Downloading" $matches.Count "Hadoop winutils files save to $HadoopWindowsBinaryDownloadDir"
     $homePage = [System.Text.RegularExpressions.Regex]::Match($HadoopWindowsBinaryUrl, "^(\w*://[^/]+)").Value
 
+    $number = 0
     foreach($match in $matches) {
+        $number += 1
         # https://github.com/steveloughran/winutils/blob/master/hadoop-2.7.1/bin/datanode.exe?raw=true
         $url = $match.Groups[1].Value + "/" + $match.Groups[2].Value + "?raw=true"
         if(-not $url.StartsWith("http")) {
             $url = $homePage.TrimEnd("/") + "/" + $url.TrimStart("/")
         }
         $name = $match.Groups[2].Value
+        Write-Host -ForegroundColor Green "Download Hadoop winutils[$number]-${totalFiles}: $name to $HadoopWindowsBinaryDownloadDir"
         $filePath = Download-File $url $HadoopWindowsBinaryDownloadDir $name
     }
-
 }
 
-Create-Test-Directory $AppDir
-Create-Test-Directory $DownloadsDir
-Create-Test-Directory $HadoopWindowsBinaryDownloadDir
-
-# Download-Hadoop-Windows-Binaries
+Check-Create-Directory $AppDir
+Check-Create-Directory $DownloadsDir
+Check-Create-Directory $HadoopWindowsBinaryDownloadDir
 
 $KafkaDirectory = Get-App-Directory $KafkaDirectoryNamePattern
 $SparkDirectory = Get-App-Directory $SparkDirectoryNamePattern
 $HadoopDirectory = Get-App-Directory $HadoopDirectoryNamePattern
 
-if($IgnoreExisting -or [String]::IsNullOrWhiteSpace($KafkaDirectory)) {
+if($ForceOverwriteConfig -or [String]::IsNullOrWhiteSpace($KafkaDirectory)) {
     $url, $name, $dirName = Get-Kafka-Download-Url-FileName-DirectoryName
     Write-Host "Kafka url = $url, name = $name"
     Check-Download-Extract-App $url $name "Kafka" $KafkaDirectoryNamePattern
@@ -665,14 +740,14 @@ if($IgnoreExisting -or [String]::IsNullOrWhiteSpace($KafkaDirectory)) {
     Update-Kafka-Settings $KafkaDirectory
 }
 
-if(($IgnoreExisting -or [String]::IsNullOrWhiteSpace($SparkDirectory)) -and -not $SkipSpark) {
+if(($ForceOverwriteConfig -or [String]::IsNullOrWhiteSpace($SparkDirectory)) -and -not $SkipSpark) {
     $url, $name, $dirName = Get-Spark-Download-Url-FileName-DirectoryName
     Check-Download-Extract-App $url $name "Spark" $SparkDirectoryNamePattern $dirName
     $SparkDirectory = Get-App-Directory $SparkDirectoryNamePattern $dirName
     Write-Host "SparkDirectory = " -ForegroundColor Green $SparkDirectory
 }
 
-if(($IgnoreExisting -or [String]::IsNullOrWhiteSpace($HadoopDirectory)) -and -not $SkipHadoop) {
+if(($ForceOverwriteConfig -or [String]::IsNullOrWhiteSpace($HadoopDirectory)) -and -not $SkipHadoop) {
     $url, $name, $dirName = Get-Hadoop-Download-Url-FileName-DirectoryName
     Check-Download-Extract-App $url $name "Hadoop" $HadoopDirectoryNamePattern $dirName
     $HadoopDirectory = Get-App-Directory $HadoopDirectoryNamePattern $dirName
@@ -682,7 +757,7 @@ if(($IgnoreExisting -or [String]::IsNullOrWhiteSpace($HadoopDirectory)) -and -no
     Download-Hadoop-Windows-Binaries
     Copy-Item "$HadoopWindowsBinaryDownloadDir\*" $hadoopBin -Force
     Update-Hadoop-Settings $HadoopDirectory
-    Init-Hadoop $HadoopDirectory $IgnoreExisting
+    Init-Hadoop $HadoopDirectory $ForceOverwriteConfig
 }
 
 exit 0

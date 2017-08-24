@@ -2,26 +2,33 @@
 :: Find and disable specified exe files in PATH
 ::===============================================
 @echo off
-where msr.exe 2>nul >nul || if not exist %~dp0\msr.exe powershell -Command "Invoke-WebRequest -Uri https://github.com/qualiu/msr/blob/master/tools/msr.exe?raw=true -OutFile %~dp0\msr.exe"
-where msr.exe 2>nul >nul || set "PATH=%PATH%;%~dp0"
+
+SetLocal EnableExtensions EnableDelayedExpansion
+
+set msrExe=%~dp0msr.exe
+if not exist %msrExe% powershell -Command "Invoke-WebRequest -Uri https://github.com/qualiu/msr/blob/master/tools/msr.exe?raw=true -OutFile %~dp0msr.exe"
 
 if "%~1" == "" (
-    echo Usage  : %~n0  ExeFilePattern      | msr -aPA -e "%~n0\s+(\S+).*"
-    echo Example: %~n0  msr.exe            | msr -aPA -e "%~n0\s+(\S+).*"
-    echo Example: %~n0  "^msr\.exe$"       | msr -aPA -e "%~n0\s+(\S+).*"
-    echo Example: %~n0  "^(msr|nin)\.exe$" | msr -aPA -e "%~n0\s+(\S+).*"
+    echo Usage  : %~n0  ExeFilePattern     | %msrExe% -aPA -e "%~n0\s+(\S+).*"
+    echo Example: %~n0  msr.exe            | %msrExe% -aPA -e "%~n0\s+(\S+).*"
+    echo Example: %~n0  "^(msr|nin)\.exe$"       | %msrExe% -aPA -e "%~n0\s+(\S+).*"
+    echo Example: %~n0  "^(msr|nin)\.exe$|psall.bat" | %msrExe% -aPA -e "%~n0\s+(\S+).*"
     exit /b -1
 )
 
-where nin.exe 2>nul >nul || if not exist %~dp0\nin.exe powershell -Command "Invoke-WebRequest -Uri https://github.com/qualiu/msr/blob/master/tools/nin.exe?raw=true -OutFile %~dp0\nin.exe"
-where nin.exe 2>nul >nul || set "PATH=%PATH%;%~dp0"
+set ninExe=%~dp0nin.exe
+if not exist %ninExe% powershell -Command "Invoke-WebRequest -Uri https://github.com/qualiu/msr/blob/master/tools/nin.exe?raw=true -OutFile %~dp0nin.exe"
 
-:: Dispaly files with pattern %1
-msr -l -p "%PATH%" -f %1 --wt --sz -M 2>nul
+:: Dispaly files with exe pattern %1
+%msrExe% -l -f "%~1" --wt --sz -p "%PATH%" 2>nul
+if %ERRORLEVEL% EQU 0 exit /b 0
 
-for /f "tokens=*" %%a in ('msr -l -p "%PATH%" -f %1 -PAC 2^>nul ^| nin nul "^(.+)[\\/][^\\/]*$" -iuPAC') do (
-    for /f "tokens=*" %%p in ('msr -z "%PATH%" -ix "%%a;" -o "" -aPAC 2^>nul') do set "PATH=%%p"
-    msr -l -p "%PATH%" -f %1 -PAC >nul 2>nul || for /f "tokens=*" %%p in ('msr -z "%PATH%" -ix "%%a\\;" -o "" -aPAC 2^>nul') do set "PATH=%%p"
-    msr -l -p "%PATH%" -f %1 -PAC >nul 2>nul || for /f "tokens=*" %%p in ('msr -z "%PATH%" -ix ";%%a\\" -o "" -aPAC 2^>nul') do set "PATH=%%p"
-    msr -l -p "%PATH%" -f %1 -PAC >nul 2>nul || for /f "tokens=*" %%p in ('msr -z "%PATH%" -ix ";%%a" -o "" -aPAC 2^>nul') do set "PATH=%%p"
+set "tmpPATH=%PATH%"
+for /f "tokens=*" %%a in ('%msrExe% -l -f "%~1" -PAC 2^>nul -p "%PATH%" ^| %ninExe% nul "^([a-z]+.+?)[\\/][^\\/]*$" -iuPAC') do (
+    :: echo Will remove in PATH: %%a
+    for /f "tokens=*" %%b in ('%msrExe% -z "!tmpPATH!" -t "\\*\s*;\s*" -o "\n" -aPAC ^| %msrExe% --nx %%a -i -PAC ^| %msrExe% -S -t "[\r\n]+\s*(\S+)" -o ";$1" -aPAC ^| %msrExe% -S -t "\s+$" -o "" -aPAC') do (
+        set "tmpPATH=%%b"
+    )
 )
+
+EndLocal & set "PATH=%tmpPATH%"
