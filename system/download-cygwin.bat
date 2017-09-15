@@ -7,9 +7,11 @@ SetLocal EnableExtensions EnableDelayedExpansion
 
 if "%~1" == "" (
     echo Usage  : %~n0  Save_Directory   [Packages]                 [Just_Display_Command]  [Download_Cache_Directory]      [DefaultPackages]
-    echo Example: %~n0  D:\tmp\cygwin64  "dos2unix,unix2dos,egrep"   1  D:\tmp\cygwin64-download-cache  "wget,autossh,rsync,curl,cygwin32-binutils"
     echo Example: %~n0  D:\tmp\cygwin64
+    echo Example: %~n0  D:\tmp\cygwin64  "openssh,rsync"  1  "" ""
+    echo Example: %~n0  D:\tmp\cygwin64  "dos2unix,unix2dos,egrep"   1  D:\tmp\cygwin64-download-cache  "wget,autossh,rsync,curl,cygwin32-binutils"
     echo Packages see: https://cygwin.com/packages/package_list.html
+    echo If you just want to install ssh and rsync: %~n0  D:\tmp\cygwin64  "openssh,rsync" 0 "" "" | msr -PA -ie "If you.*?:|(\w*ssh|rsync)" -x %~n0 -t D:\S+
     exit /b -1
 )
 
@@ -28,10 +30,13 @@ if "%~2" == "" (
     set Packages=%DefaultPackages%
 ) else (
     ::Remove double quotes
-    set DefaultPackages=%DefaultPackages:"=%
-    for /f "tokens=*" %%a in ('msr -z !DefaultPackages! -t "\s+" -o "" -aPAC') do set "DefaultPackages=%%a"
-    if not "!DefaultPackages!" == "" set "DefaultPackages=,!DefaultPackages!"
-    for /f "tokens=*" %%a in ('msr -z "%~2!DefaultPackages!" -t "\s*,\s*" -o "\n" -aPAC ^| nin nul -iuPAC ^| msr -S -t "[\r\n]+\s*(\S+)" -o ",$1" -PAC ^| msr -t ",\W*$" -o "" -aPAC ') do set "Packages=%%a"
+    if not [!DefaultPackages!] == [] (
+        :: Remove quotes
+        set DefaultPackages=%DefaultPackages:"=%
+        for /f "tokens=*" %%a in ('msr -z !DefaultPackages! -t "\s+" -o "" -aPAC') do set "DefaultPackages=%%a"
+        set "DefaultPackages=,!DefaultPackages!"
+    )
+    for /f "tokens=*" %%a in ('msr -z "%~2!DefaultPackages!" -t "\s*,\s*" -o "\n" -aPAC ^| nin nul -iuPAC ^| msr -S -t "[\r\n]+\s*(\S+)" -o ",$1" -aPAC ^| msr -t ",\W*$" -o "" -aPAC ') do set Packages="%%a"
 )
 
 set Just_Display_Command=%3
@@ -55,11 +60,12 @@ set cygwin64_setup_exe=%DownloadsDirectory%\cygwin-setup-x86_64.exe
 
 if not exist %cygwin64_setup_exe% powershell -Command "Invoke-WebRequest -Uri https://www.cygwin.com/setup-x86_64.exe -OutFile %cygwin64_setup_exe%"
 
-echo %cygwin64_setup_exe% --root %Save_Directory% --local-package-dir %Download_Cache_Directory% --packages %Packages% --arch x86_64 %OtherOptions% | msr -aPA -x %cygwin64_setup_exe% -ie "\w+"
+echo %cygwin64_setup_exe% --root %Save_Directory% --local-package-dir %Download_Cache_Directory% --packages !Packages! --arch x86_64 %OtherOptions% | msr -aPA -x %cygwin64_setup_exe% -ie "\w+"
 
-msr -it "\w+" -z "%Packages%" >nul
+msr -it "\w+" -z "!Packages!" >nul
 if !ERRORLEVEL! EQU 0 echo No packages. | msr -aPA -t "(.+)"  & exit /b -1
 
 if "%Just_Display_Command%" == "1" exit /b 0
 
-%cygwin64_setup_exe% --root %Save_Directory% --local-package-dir %Download_Cache_Directory% --packages %Packages% --arch x86_64 %OtherOptions%
+%cygwin64_setup_exe% --root %Save_Directory% --local-package-dir %Download_Cache_Directory% --packages !Packages! --arch x86_64 %OtherOptions%
+echo Please intialize or enter Cygwin by running: "%Save_Directory%\Cygwin.bat" | msr -aPA -t "(Please.*running)" -x "%Save_Directory%\Cygwin.bat"

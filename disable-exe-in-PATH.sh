@@ -3,7 +3,7 @@
 # Find and disable specified exe files in PATH
 #===============================================
 
-ThisDir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+ThisDir="$( cd "$( dirname "$0" )" && pwd )"
 source $ThisDir/check-download-tools.sh
 if [ $? -ne 0 ]; then
     echo "Failed to call $ThisDir/check-download-tools.sh"

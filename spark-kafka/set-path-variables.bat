@@ -76,7 +76,7 @@ if not "%SkipHadoop%" == "1" (
     
     set "HadoopBin=%HADOOP_HOME%\bin"
     set "HadoopSBin=%HADOOP_HOME%\sbin"
-    set "HadoopConfigDir=%HADOOP_HOME%\etc\hadoop"
+    set "HADOOP_CONF_DIR=%HADOOP_HOME%\etc\hadoop"
     
     :: Clear another existing kafka or hdfs directories in %PATH%, except the ones to set.
     call :Clean_ExeDir_In_PATH_Except hdfs.cmd
@@ -107,13 +107,11 @@ for /f "tokens=*" %%a in ('msr -z "%PATH%" -t "\\?\s*;[;\s]*" -o "\n" -PAC ^| ni
 
 ::Set brokers for some test script files
 for /f "tokens=*" %%a in ('msr -p %KafkaConfigDir% -f "^server-?\d*\.properties$" -it "^\s*port\s*=\s*(\d+).*" -o "$1" -PAC ^| msr -t "\d+" -o "localhost:$0" -PAC ^| msr -S -t "\s+(\S+)" -o ",$1" -aPAC') do set "KafkaBrokers=%%a"
-if "%DisplayVariables%" == "1" (
-    :: EndLocal & call :Set_Variables & call :DisplayAll
-    EndLocal & set "HADOOP_HOME=%HADOOP_HOME%" & set "SPARK_HOME=%SPARK_HOME%" & set "KAFKA_HOME=%KAFKA_HOME%" & set "PATH=%PATH%" & set "KafkaBin=%KafkaBin%" & set "SparkBin=%SparkBin%" & set "HadoopBin=%HadoopBin%" & set "HadoopSBin=%HadoopSBin%" & set "KafkaConfigDir=%KafkaConfigDir%" & call :DisplayAll
-) else (
-    :: EndLocal & call :Set_Variables
-    EndLocal & set "HADOOP_HOME=%HADOOP_HOME%" & set "SPARK_HOME=%SPARK_HOME%" & set "KAFKA_HOME=%KAFKA_HOME%" & set "PATH=%PATH%" & set "KafkaBin=%KafkaBin%" & set "SparkBin=%SparkBin%" & set "HadoopBin=%HadoopBin%" & set "HadoopSBin=%HadoopSBin%" & set "KafkaConfigDir=%KafkaConfigDir%"
-)
+
+:: EndLocal & call :Set_Variables
+EndLocal & set "HADOOP_HOME=%HADOOP_HOME%" & set "SPARK_HOME=%SPARK_HOME%" & set "KAFKA_HOME=%KAFKA_HOME%" & set "PATH=%PATH%" & set "KafkaBin=%KafkaBin%" & set "SparkBin=%SparkBin%" & set "HadoopBin=%HadoopBin%" & set "HadoopSBin=%HadoopSBin%" & set "HADOOP_CONF_DIR=%HADOOP_CONF_DIR%" & set "KafkaConfigDir=%KafkaConfigDir%"
+    
+if "%DisplayVariables%" == "1" call :DisplayAll
 
 exit /b 0
     

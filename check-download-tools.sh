@@ -1,8 +1,9 @@
-#!/bin/sh
-#=======================================================
-# Initialize tools
-#=======================================================
-ThisDir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+#!/bin/bash
+#================================================================
+# Initialize tools.
+# Latest version in: https://github.com/qualiu/msrTools
+#================================================================
+ThisDir="$( cd "$( dirname "$0" )" && pwd )"
 SYS_TYPE=$(uname | sed 's/_.*//g' | awk '{print tolower($0)}')
 if [ "$SYS_TYPE"x = "linux"x ]; then
     export toolExtension=.gcc48
@@ -13,7 +14,7 @@ else
     exit -1
 fi
 
-function check_tool() {
+check_tool() {
     toolName=$1
     toolPath=$(whereis $toolName 2>/dev/null | msr -t "^.*?:\s*(\S+?${toolName}\S*).*" -o '$1' -PAC 2>/dev/null | tr -d '\r')
     if [ -z "$toolPath" ] || [ ! -f $toolPath ]; then
