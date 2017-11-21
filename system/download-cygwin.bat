@@ -5,21 +5,22 @@
 @echo off
 SetLocal EnableExtensions EnableDelayedExpansion
 
-if "%~1" == "" (
-    echo Usage  : %~n0  Save_Directory   [Packages]                 [Just_Display_Command]  [Download_Cache_Directory]      [DefaultPackages]
-    echo Example: %~n0  D:\tmp\cygwin64
-    echo Example: %~n0  D:\tmp\cygwin64  "openssh,rsync"  1  "" ""
-    echo Example: %~n0  D:\tmp\cygwin64  "dos2unix,unix2dos,egrep"   1  D:\tmp\cygwin64-download-cache  "wget,autossh,rsync,curl,cygwin32-binutils"
-    echo Packages see: https://cygwin.com/packages/package_list.html
-    echo If you just want to install ssh and rsync: %~n0  D:\tmp\cygwin64  "openssh,rsync" 0 "" "" | msr -PA -ie "If you.*?:|(\w*ssh|rsync)" -x %~n0 -t D:\S+
-    exit /b -1
-)
-
 where msr.exe 2>nul >nul || if not exist %~dp0\msr.exe powershell -Command "Invoke-WebRequest -Uri https://github.com/qualiu/msr/blob/master/tools/msr.exe?raw=true -OutFile %~dp0\msr.exe"
 where msr.exe 2>nul >nul || set "PATH=%PATH%;%~dp0"
 
 where nin.exe 2>nul >nul || if not exist %~dp0\nin.exe powershell -Command "Invoke-WebRequest -Uri https://github.com/qualiu/msr/blob/master/tools/nin.exe?raw=true -OutFile %~dp0\nin.exe"
 where nin.exe 2>nul >nul || set "PATH=%PATH%;%~dp0"
+
+if "%~1" == "" (
+    echo Usage  : %0  Save_Directory   [Packages]                 [Just_Display_Command]  [Download_Cache_Directory]      [DefaultPackages]
+    echo Example: %0  D:\tmp\cygwin64
+    echo Example: %0  D:\tmp\cygwin64  "openssh,rsync,expect"  1  "" ""
+    echo Example: %0  D:\tmp\cygwin64  "dos2unix,unix2dos,egrep"   1  D:\tmp\cygwin64-download-cache  "wget,autossh,rsync,curl,cygwin32-binutils"
+    echo Packages see: https://cygwin.com/packages/package_list.html
+    echo If you just want to use ssh and rsync: %0  D:\tmp\cygwin64  "openssh,rsync" 0 "" ""        | msr -PA -ie "If you.*?:|(\w*ssh|rsync|expect)" -x %0 -t D:\S+
+    echo If you just want ssh + rsync + expect: %0  D:\tmp\cygwin64  "openssh,rsync,expect" 0 "" "" | msr -PA -ie "If you.*?:|(\w*ssh|rsync|expect)" -x %0 -t D:\S+
+    exit /b -1
+)
 
 set Save_Directory=%~dp1%~nx1
 if %Save_Directory:~-1%==\ set Save_Directory=%Save_Directory:~0,-1%
