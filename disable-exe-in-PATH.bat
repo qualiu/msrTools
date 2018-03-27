@@ -6,7 +6,10 @@
 SetLocal EnableExtensions EnableDelayedExpansion
 
 set msrExe=%~dp0msr.exe
-if not exist %msrExe% powershell -Command "Invoke-WebRequest -Uri https://github.com/qualiu/msr/blob/master/tools/msr.exe?raw=true -OutFile %~dp0msr.exe"
+::if not exist %msrExe% powershell -Command "Invoke-WebRequest -Uri https://github.com/qualiu/msr/blob/master/tools/msr.exe?raw=true -OutFile %~dp0msr.exe"
+::if not exist %msrExe% powershell -Command "(New-Object System.Net.WebClient).DownloadFile('https://github.com/qualiu/msr/blob/master/tools/msr.exe?raw=true', '%~dp0msr.exe')"
+
+if not exist %msrExe% powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri https://github.com/qualiu/msr/blob/master/tools/msr.exe?raw=true -OutFile %~dp0msr.exe"
 
 if "%~1" == "" (
     echo Usage  : %~n0  ExeFilePattern     | %msrExe% -aPA -e "%~n0\s+(\S+).*"

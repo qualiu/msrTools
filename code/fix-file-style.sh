@@ -1,7 +1,7 @@
 #!/bin/sh
 #==================================================================
 # Check and fix file style.
-# Latest version in: https://github.com/qualiu/msrTools
+# Latest version in: https://github.com/qualiu/msrTools/
 #==================================================================
 
 ThisDir="$( cd "$( dirname "$0" )" && pwd )"
@@ -51,6 +51,9 @@ if [ ! -f "$PathToDo" ]; then
     fi
 fi
 
+echo "## Remove all white spaces if it is a white space line" | msr -PA -e .+
+msr ${msrOptions[@]} -p $PathToDo ${FileFilter[@]} -it "^\s+$" -o "" -R -c Remove all white spaces if it is a white space line.
+
 echo "## Remove white spaces at each line end" | msr -PA -e .+
 msr ${msrOptions[@]} -p $PathToDo ${FileFilter[@]} -it "(\S+)\s+$" -o '$1' -R -c Remove white spaces at each line end.
 
@@ -67,14 +70,13 @@ function ConvertTabTo4Spaces() {
     else
         msr ${msrOptions[@]} -p $PathToDo -it "^(\s*)\t" -o '$1    ' -R -c Covert TAB to 4 spaces.
     fi
-    
+
     if (($? > 0)); then
         ConvertTabTo4Spaces
     fi
 }
 
 ConvertTabTo4Spaces
-
 
 echo "## Convert line ending style from CR LF to LF for Linux files" | msr -PA -e .+
 FileFilterForLinuxLineEnding=("-f" "^makefile$|\.sh$|\.mak\w*$")

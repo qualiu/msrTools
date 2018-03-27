@@ -2,6 +2,8 @@
 :: Kill processes by their id or command line matching pattern.
 :: Will show the processes info with colors before killing.
 :: This scripts depends and will call psall.bat.
+::
+:: Latest version in: https://github.com/qualiu/msrTools/
 ::============================================================
 @echo off
 

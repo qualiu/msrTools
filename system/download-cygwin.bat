@@ -1,5 +1,7 @@
 ::======================================================================
-::Download a portable Cygwin in specified diretory
+:: Download a portable Cygwin into a specified diretory: Not install.
+::
+:: Latest version in: https://github.com/qualiu/msrTools/
 ::======================================================================
 
 @echo off
@@ -17,7 +19,7 @@ if "%~1" == "" (
     echo Example: %0  D:\tmp\cygwin64  "openssh,rsync,expect"  1  "" ""
     echo Example: %0  D:\tmp\cygwin64  "dos2unix,unix2dos,egrep"   1  D:\tmp\cygwin64-download-cache  "wget,autossh,rsync,curl,cygwin32-binutils"
     echo Packages see: https://cygwin.com/packages/package_list.html
-    echo If you just want to use ssh and rsync: %0  D:\tmp\cygwin64  "openssh,rsync" 0 "" ""        | msr -PA -ie "If you.*?:|(\w*ssh|rsync|expect)" -x %0 -t D:\S+
+    echo If you just want to use ssh and rsync: %0  D:\tmp\cygwin64  "openssh,rsync,expect" 0 "" ""        | msr -PA -ie "If you.*?:|(\w*ssh|rsync|expect)" -x %0 -t D:\S+
     echo If you just want ssh + rsync + expect: %0  D:\tmp\cygwin64  "openssh,rsync,expect" 0 "" "" | msr -PA -ie "If you.*?:|(\w*ssh|rsync|expect)" -x %0 -t D:\S+
     exit /b -1
 )
@@ -67,6 +69,8 @@ msr -it "\w+" -z "!Packages!" >nul
 if !ERRORLEVEL! EQU 0 echo No packages. | msr -aPA -t "(.+)"  & exit /b -1
 
 if "%Just_Display_Command%" == "1" exit /b 0
-
 %cygwin64_setup_exe% --root %Save_Directory% --local-package-dir %Download_Cache_Directory% --packages !Packages! --arch x86_64 %OtherOptions%
+echo.
+echo To use Linux utilities: Add %Save_Directory%\bin to %%PATH^^%% or temporarily: SET PATH=%%PATH^^%%;%Save_Directory%\bin | msr -aPA -e "(To use \w+ \w+)|\S+" -x %Save_Directory%\bin -t "((SET.+))|\S*PATH\S*"
 echo Please intialize or enter Cygwin by running: "%Save_Directory%\Cygwin.bat" | msr -aPA -t "(Please.*running)" -x "%Save_Directory%\Cygwin.bat"
+start "Initialize Cygwin in %Save_Directory%" %Save_Directory%\Cygwin.bat

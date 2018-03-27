@@ -1,5 +1,6 @@
 ::=======================================================
 :: Find unreferenced methods in code files.
+:: Latest version in: https://github.com/qualiu/msrTools/
 ::=======================================================
 @echo off
 SetLocal EnableExtensions EnableDelayedExpansion
@@ -44,7 +45,7 @@ set ShowCommand=-c
     set msrOptions=!msrOptions! !safeArg!
     shift
     goto CheckArgs
-    
+
 :CheckArgsCompleted
 
 for /f "tokens=*" %%a in ('msr -z "!NoPathAnyInfoColor!" -t "(__\s*$|__$|__)" -o "" -aPAC') do set NoPathAnyInfoColor=%%a
@@ -70,7 +71,7 @@ for /f "tokens=*" %%a in ('!commonCommand! -t %Method_Capture1_Pattern% -o "$1" 
     set checkMethodPattern="\b%%a\b"
     set checkCommand=!commonCommand! -t !checkMethodPattern! %ShowCommand% !msrOptions! Check method %%a
     !checkCommand! >nul
-    
+
     :: checkCommand Return value = !ERRORLEVEL! = matched count in Files_or_Directories
     if !ERRORLEVEL! EQU 1 (
         set /a unreferencedMethods+=1

@@ -1,7 +1,7 @@
 #!/bin/bash
 #================================================================
 # Initialize tools.
-# Latest version in: https://github.com/qualiu/msrTools
+# Latest version in: https://github.com/qualiu/msrTools/
 #================================================================
 ThisDir="$( cd "$( dirname "$0" )" && pwd )"
 SYS_TYPE=$(uname | sed 's/_.*//g' | awk '{print tolower($0)}')
@@ -22,12 +22,12 @@ check_tool() {
         if [ ! -f $ThisDir/$toolName$toolExtension ]; then
             wget "https://github.com/qualiu/msr/blob/master/tools/$toolName$toolExtension?raw=true" -O $toolPath
         fi
-        
+
         # echo "toolPath=$toolPath"
         if [[ ! -x $toolPath ]]; then
            chmod +x $toolPath
         fi
-        
+
         if [ "$toolName" == "msr" ]; then
             export msr=$toolPath
             alias msr=$toolPath
