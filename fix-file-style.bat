@@ -51,6 +51,9 @@ if exist %PathToDo%\* (
     )
 )
 
+@echo ## Remove all white spaces if it is a white space line | msr -PA -e .+
+msr !msrOptions! -p %PathToDo% !FileFilter! -it "^\s+$" -o "" -R -c Remove all white spaces if it is a white space line
+
 @echo ## Remove white spaces at each line end | msr -PA -e .+
 msr !msrOptions! -p %PathToDo% !FileFilter! -it "(\S+)\s+$" -o "$1" -R -c Remove white spaces at each line end.
 
