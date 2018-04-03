@@ -27,10 +27,11 @@ for /f "tokens=*" %%a in ('git show head --name-only --stat^=500 --oneline --pre
     if "%Is_Just_Show_Commands%" == "1" (
         echo %FixStyleScript% "%GitRepoRootDir%\%%a"
     ) else (
-        %FixStyleScript% "%GitRepoRootDir%\%%a"
+        call %FixStyleScript% "%GitRepoRootDir%\%%a"
     )
 )
 
+git status
 exit /b 0
 
 :ShowUage
