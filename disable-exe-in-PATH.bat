@@ -6,7 +6,7 @@
 SetLocal EnableExtensions EnableDelayedExpansion
 
 set msrExe=%~dp0msr.exe
-::if not exist %msrExe% powershell -Command "Invoke-WebRequest -Uri https://github.com/qualiu/msr/blob/master/tools/msr.exe?raw=true -OutFile %~dp0msr.exe"
+::if not exist %msrExe% powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri https://github.com/qualiu/msr/blob/master/tools/msr.exe?raw=true -OutFile %~dp0msr.exe"
 ::if not exist %msrExe% powershell -Command "(New-Object System.Net.WebClient).DownloadFile('https://github.com/qualiu/msr/blob/master/tools/msr.exe?raw=true', '%~dp0msr.exe')"
 
 if not exist %msrExe% powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri https://github.com/qualiu/msr/blob/master/tools/msr.exe?raw=true -OutFile %~dp0msr.exe"
@@ -20,7 +20,7 @@ if "%~1" == "" (
 )
 
 set ninExe=%~dp0nin.exe
-if not exist %ninExe% powershell -Command "Invoke-WebRequest -Uri https://github.com/qualiu/msr/blob/master/tools/nin.exe?raw=true -OutFile %~dp0nin.exe"
+if not exist %ninExe% powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri https://github.com/qualiu/msr/blob/master/tools/nin.exe?raw=true -OutFile %~dp0nin.exe"
 
 :: Dispaly files with exe pattern %1
 %msrExe% -l -f "%~1" --wt --sz -p "%PATH%" 2>nul

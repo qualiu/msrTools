@@ -22,10 +22,10 @@ if not "%IsPreview%" == "0" ( set "msrExecute=-c Check junks" ) else ( set "msrE
 if "%Junk_Directory_Pattern%" == "" set "Junk_Directory_Pattern=Debug|Release|ipch|obj|bin|.vs|_UpgradeReport_Files"
 if [%Junk_File_Pattern%] == [] set Junk_File_Pattern="^\$RANDOM_SEED\$|\.(pdb|obj|o|vc.db|ilk|suo|sdf|vshost\..*)$"
 
-@where msr.exe 2>nul >nul || if not exist %~dp0\msr.exe powershell -Command "Invoke-WebRequest -Uri https://github.com/qualiu/msr/blob/master/tools/msr.exe?raw=true -OutFile %~dp0\msr.exe"
+@where msr.exe 2>nul >nul || if not exist %~dp0\msr.exe powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri https://github.com/qualiu/msr/blob/master/tools/msr.exe?raw=true -OutFile %~dp0\msr.exe"
 @where msr.exe 2>nul >nul || set "PATH=%PATH%;%~dp0"
 
-@where nin.exe 2>nul >nul || if not exist %~dp0\nin.exe powershell -Command "Invoke-WebRequest -Uri https://github.com/qualiu/msr/blob/master/tools/nin.exe?raw=true -OutFile %~dp0\nin.exe"
+@where nin.exe 2>nul >nul || if not exist %~dp0\nin.exe powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri https://github.com/qualiu/msr/blob/master/tools/nin.exe?raw=true -OutFile %~dp0\nin.exe"
 @where nin.exe 2>nul >nul || set "PATH=%PATH%;%~dp0"
 
 :: Remove junk directory

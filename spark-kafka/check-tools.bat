@@ -13,5 +13,5 @@ call :DownloadGitTool nin.exe
 
 :DownloadGitTool
     set ToolName=%1
-    where %ToolName% 2>nul >nul || if not exist %TestToolsDir%\%ToolName% powershell -Command "Invoke-WebRequest -Uri https://github.com/qualiu/msr/blob/master/tools/%ToolName%?raw=true -OutFile %TestToolsDir%\%ToolName%"
+    where %ToolName% 2>nul >nul || if not exist %TestToolsDir%\%ToolName% powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri https://github.com/qualiu/msr/blob/master/tools/%ToolName%?raw=true -OutFile %TestToolsDir%\%ToolName%"
     where %ToolName% 2>nul >nul || set "PATH=%TestToolsDir%;%PATH%"

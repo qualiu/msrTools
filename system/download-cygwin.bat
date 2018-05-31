@@ -7,10 +7,10 @@
 @echo off
 SetLocal EnableExtensions EnableDelayedExpansion
 
-where msr.exe 2>nul >nul || if not exist %~dp0\msr.exe powershell -Command "Invoke-WebRequest -Uri https://github.com/qualiu/msr/blob/master/tools/msr.exe?raw=true -OutFile %~dp0\msr.exe"
+where msr.exe 2>nul >nul || if not exist %~dp0\msr.exe powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri https://github.com/qualiu/msr/blob/master/tools/msr.exe?raw=true -OutFile %~dp0\msr.exe"
 where msr.exe 2>nul >nul || set "PATH=%PATH%;%~dp0"
 
-where nin.exe 2>nul >nul || if not exist %~dp0\nin.exe powershell -Command "Invoke-WebRequest -Uri https://github.com/qualiu/msr/blob/master/tools/nin.exe?raw=true -OutFile %~dp0\nin.exe"
+where nin.exe 2>nul >nul || if not exist %~dp0\nin.exe powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri https://github.com/qualiu/msr/blob/master/tools/nin.exe?raw=true -OutFile %~dp0\nin.exe"
 where nin.exe 2>nul >nul || set "PATH=%PATH%;%~dp0"
 
 if "%~1" == "" (
@@ -61,7 +61,7 @@ if not exist %DownloadsDirectory% md %DownloadsDirectory%
 
 set cygwin64_setup_exe=%DownloadsDirectory%\cygwin-setup-x86_64.exe
 
-if not exist %cygwin64_setup_exe% powershell -Command "Invoke-WebRequest -Uri https://www.cygwin.com/setup-x86_64.exe -OutFile %cygwin64_setup_exe%"
+if not exist %cygwin64_setup_exe% powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri https://www.cygwin.com/setup-x86_64.exe -OutFile %cygwin64_setup_exe%"
 
 echo %cygwin64_setup_exe% --root %Save_Directory% --local-package-dir %Download_Cache_Directory% --packages !Packages! --arch x86_64 %OtherOptions% | msr -aPA -x %cygwin64_setup_exe% -ie "\w+"
 
