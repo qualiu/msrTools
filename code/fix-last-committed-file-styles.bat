@@ -25,7 +25,7 @@ set FixStyleScript=%ScriptDir%\fix-file-style.bat
 for /f "tokens=*" %%a in ('git rev-parse --show-toplevel ^| msr -x / -o \ -aPAC') do set "GitRepoRootDir=%%a"
 for /f "tokens=*" %%a in ('git show head --name-only --stat^=500 --oneline --pretty^="format:" ^| msr -x / -o \ -aPAC') do @(
     if "%Is_Just_Show_Commands%" == "1" (
-        echo %FixStyleScript% "%GitRepoRootDir%\%%a"
+        echo %FixStyleScript% "%GitRepoRootDir%\%%a" | msr -aPA -ix "%GitRepoRootDir%\%%a"
     ) else (
         call %FixStyleScript% "%GitRepoRootDir%\%%a"
     )
