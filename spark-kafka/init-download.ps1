@@ -6,7 +6,7 @@
     Check and download Kafka, Hadoop and Spark; Configure them to save data and log in itself directory.
     Will not overwrite each of them if there's already a version exists in $AppDir, except $ForceOverwriteConfig used.
     You can set environment variable ExtraDownloadRepository to avoid downloading from web.
-    
+
 .PARAMETER KafkaVersion
     Kafka version like 0.10.1.0 in http://archive.apache.org/dist/kafka/
 
@@ -25,12 +25,12 @@
 
 .PARAMETER SkipHadoop
     Skip downloading and configuring Hadoop if not need.
-    
+
 .PARAMETER ForceOverwriteConfig
     Usefull if you want to download another version and configure it, not skip if exists another version Kafka.
-    
+
 .EXAMPLE
-    
+
 #>
 
 [CmdletBinding()]
@@ -75,7 +75,7 @@ $Home7z = "http://www.7-zip.org/download.html"
 $App7zDir = Join-Path $AppDir "7z"
 $App7zExe = Join-Path $App7zDir "7z.exe"
 
-$HadoopWindowsBinaryUrl = "https://github.com/steveloughran/winutils/tree/master/hadoop-2.7.1/bin"
+$HadoopWindowsBinaryUrlHead = "https://github.com/steveloughran/winutils/tree/master/" # hadoop-2.7.1/bin"
 $HadoopWindowsBinaryDownloadDir = Join-Path $DownloadsDir "winutils"
 
 $SparkDirectoryNamePattern = "^spark.*\d+.*hadoop.*\d+"
@@ -91,12 +91,13 @@ function Check-Create-Directory($directory) {
 }
 
 Check-Create-Directory $ToolDir
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;
 
 if( -not $(Get-Command msr.exe > $null 2>$null) ) {
     if (-not $(Test-Path $(Join-Path $ToolDir msr.exe))) {
         Invoke-WebRequest -Uri https://github.com/qualiu/msr/blob/master/tools/msr.exe?raw=true -OutFile $(Join-Path $ToolDir msr.exe)
     }
-    
+
     $env:PATH = $ToolDir + ";" + $env:PATH
 }
 
@@ -146,12 +147,12 @@ function Get-App-Directory($directoryNamePattern, $dirName = "") {
             return $directory
         }
     }
-    
+
     $dirName = $(Get-ChildItem -Directory $AppDir | where { $_.Name -imatch $directoryNamePattern } | Sort Name -Descending | Select -Last 1 Name).Name
     if([String]::IsNullOrEmpty($dirName)) {
         return ""
     }
-    
+
     return $(Join-Path $AppDir $dirName)
 }
 
@@ -159,19 +160,19 @@ function Copy-From-ExtraDownloadRepository($name, $savePath) {
     if([String]::IsNullOrEmpty($ExtraDownloadRepository) -or -not $(Test-Path $ExtraDownloadRepository)) {
         return $false
     }
-    
+
     if (Test-Path $(Join-Path $ExtraDownloadRepository $name)) {
         Copy-Item $(Join-Path $ExtraDownloadRepository $name) $savePath
         return $true
     }
-    
+
     foreach($dir in [IO.Directory]::GetDirectories($ExtraDownloadRepository)) {
         if (Test-Path $(Join-Path $dir $name)) {
             Copy-Item $(Join-Path $dir $name) $savePath
             return $true
         }
     }
-    
+
     return $false
 }
 
@@ -194,7 +195,7 @@ function Download-File($url, $saveDirectory, $name, $overwrite = $false) {
         }
         Rename-Item $tmpSavePath $savePath
     }
-    
+
     return $savePath
 }
 
@@ -215,7 +216,7 @@ function Get-Url-Name($toolName, $homePage, $pattern) {
         # Write-Host -ForegroundColor Green "Will add $homeRoot to $url"
         $url = $homeRoot + $url
     }
-    
+
     $name = $match.Groups[2].Value
 
     return $url, $name
@@ -249,17 +250,17 @@ function Download-7z() {
 
     $url, $name = Get-Url-Name "7z" $Home7z "<a href=`"(.*?/)?(7z[\w\.-]*\.zip)`">"
     $7zSavePath = Download-File $url $DownloadsDir $name
-    
+
     # unzip -o $7zSavePath -d $App7zDir >$null
     Add-Type -A System.IO.Compression.FileSystem
     [IO.Compression.ZipFile]::ExtractToDirectory($7zSavePath, $App7zDir)
 
     $exe7z = [System.IO.Directory]::GetFiles($App7zDir, "7z*.exe")[0]
-    
+
     if([System.IO.Path]::GetFileNameWithoutExtension($exe7z) -ine "7z") {
         Rename-Item $exe7z $App7zExe
     }
-    
+
     $env:PATH = $App7zDir + ";" + $env:PATH
     $tool7z = $(Get-Command 7z.exe 2>$null).Source
     if([String]::IsNullOrEmpty($tool7z) -or ![IO.File]::Exists($tool7z)) {
@@ -305,7 +306,7 @@ function Extract-ZipTarGz($tgzFile, $saveDirectory) {
         # Extract-ZipTarGz-By-Tar $tgzFile $saveDirectory
         # return
     }
-    
+
     Write-Host "Will use 7z to extract $tgzFile to $saveDirectory"
     $tool7z = $(Get-Command 7z.exe 2>$null).Source
     if([String]::IsNullOrEmpty($tool7z)) {
@@ -318,7 +319,7 @@ function Extract-ZipTarGz($tgzFile, $saveDirectory) {
             $tool7z = Join-Path $App7zDir "7z.exe"
         }
     }
-    
+
     if([String]::IsNullOrEmpty($tool7z)){
         $tool7z = $(Get-Command 7z.exe 2>$null).Source
     }
@@ -380,15 +381,15 @@ function Update-Kafka-Settings($kafkaDir) {
     }
 
     # msr -it "set\s+LOG_DIR=" -x / -o "\\" -f "\.(bat|cmd)$" -rp $KafkaDirectory  -R -O -c To avoid first time warning
-    
+
     $kafkaConfigDir = Join-Path $kafkaDir "config"
     msr -it "^(\s*dataDir)\s*=.*$" -o "`$1=$zookeeperDataDirReplace" -p $(Join-Path $kafkaConfigDir "zookeeper.properties") -R -c Set zookeeper dataDir = $zookeeperDataDir
 
     $kafkaServerConfigFile = $(Join-Path $kafkaConfigDir "server.properties")
     msr -it "^(\s*log.dirs)\s*=.*$" -o "`$1=$kafkaLogDirReplace" -p $kafkaServerConfigFile -R -c Set kafka log.dirs = $zookeeperDataDir
-    
+
     msr -it "^(\s*num.partitions)\s*=.*$" -o "`$1=$KafkaPartitions" -p $kafkaServerConfigFile -R -c Set kafka num.partitions = $KafkaPartitions
-    
+
     msr -rp $kafkaConfigDir -f properties -x 9092 -o $KafkaPort -R -c Replace kakfa port to $KafkaPort
     msr -rp $kafkaConfigDir -f properties -x 2181 -o $ZookeeperPort -R -c Replace zookeeper port to $ZookeeperPort
     msr -rp $kafkaConfigDir -f properties -it "^(\s*port)\s*=\s*(\d+)(.*)" -o "`$1=$KafkaPort`$3" -R -c Replace kafka port to $KafkaPort
@@ -398,7 +399,7 @@ function Update-Kafka-Settings($kafkaDir) {
             msr -rp $kafkaConfigDir -f properties -it "^(broker.id\s*=.+)" -o "`$0`nport=$KafkaPort" -R -c Add kafka port settings to $KafkaPort
         }
     }
-    
+
     # msr -rp $kafkaConfigDir -f properties -it "^(\s*)#?(listeners)=\S+" -o "`$1`$2==PLAINTEXT://192.168.56.1:9292" -R -c Replace zookeeper port.
 }
 
@@ -415,7 +416,7 @@ function Update-Or-Add-Setting($file, $findPattern, $replaceTo, $notFoundThenAdd
         [IO.File]::WriteAllText($file, $newText)
         Write-Host -ForegroundColor Green "Updated setting: $file"
      } elseif ($reg.IsMatch($allText)) {
-        
+
      } elseif (-not [String]::IsNullOrEmpty($notFoundThenAdd)) {
         [IO.File]::AppendAllText($file, $notFoundThenAdd)
         Write-Host -ForegroundColor Green "Added setting to file: $file"
@@ -479,7 +480,7 @@ function Update-Hadoop-Settings($hadoopDir) {
     Update-Or-Add-Setting $hadoop_env_cmd "([\r\n]+\s*set\s+HADOOP_CONF_DIR)\s*=[^\r\n]*" '$1=%HADOOP_HOME%\etc\hadoop' "`nset HADOOP_CONF_DIR=%HADOOP_HOME%\etc\hadoop"
     Update-Or-Add-Setting $hadoop_env_cmd "([\r\n]+\s*set\s+YARN_CONF_DIR)\s*=[^\r\n]*" '$1=%HADOOP_CONF_DIR%'  "`nset YARN_CONF_DIR=%HADOOP_CONF_DIR%"
     Update-Or-Add-Setting $hadoop_env_cmd "([\r\n]+\s*set\s+PATH)\s*=.*HADOOP_HOME[^\r\n]*" '$1=%PATH%;%HADOOP_HOME%\bin' "`nset PATH=%PATH%;%HADOOP_HOME%\bin"
-    
+
     # core-site.xml
     $core_site_xml = Join-Path $hadoopConfigDirectory "core-site.xml"
     $configCoreSite = @"
@@ -492,23 +493,23 @@ function Update-Hadoop-Settings($hadoopDir) {
     <name>hadoop.tmp.dir</name>
     <value>my_hadoop_datalog_root_to_be_replaced/tmp</value>
   </property>
-  
+
   <!-- Refresh proxyuser settings command: hdfs dfsadmin -refreshSuperUserGroupsConfiguration -->
   <property>
     <name>hadoop.proxyuser.qualiu.hosts</name>
     <value>*</value>
   </property>
-  
+
   <property>
     <name>hadoop.proxyuser.qualiu.groups</name>
     <value>*</value>
   </property>
-  
+
   <property>
     <name>hadoop.proxyuser.qualiu.users</name>
     <value>*</value>
   </property>
-  
+
 </configuration>
 "@
     $configCoreSite = Replace-Hadoop-Config-PlaceHolder $configCoreSite $myHadoopDataLogRootDirectory
@@ -634,7 +635,7 @@ function Update-Hadoop-Settings($hadoopDir) {
     Check-Copy-Template $yarn_site_xml
     $configYarnSite = Replace-Hadoop-Config-PlaceHolder $configYarnSite $myHadoopDataLogRootDirectory
     Check-Update-Config $yarn_site_xml $configYarnSite "<name>\s*yarn.server.resourcemanager.address"
-    
+
     # dir /A:D /S /B test\app\hadoop-2.7.2 | msr --nt "(test|sources|examples)$|tomcat" -PAC
     # $jarLibPathes = ""
     # (Get-ChildItem -Recurse -Directory $hadoopDir |
@@ -669,14 +670,14 @@ function Check-Download-Extract-App($url, $name, $appName, $appDirNamePattern) {
     if([String]::IsNullOrEmpty($tgz)) {
         exit -1
     }
-    
+
     $foundDir = Get-App-Directory $appDirNamePattern
     if ([String]::IsNullOrEmpty($foundDir)) {
         Extract-ZipTarGz $tgz $AppDir
     } else {
         Write-Host -ForegroundColor Yellow "Found existed $appName and not extract $tgz to overwrite: $foundDir"
     }
-    
+
     $foundDir = Get-App-Directory $appDirNamePattern
     if (-not $(Test-Path $foundDir)) {
         Write-Host -ForegroundColor Red "Not exist $appName directory: $foundDir, search pattern = '$appDirNamePattern'"
@@ -688,26 +689,36 @@ function Check-Download-Extract-App($url, $name, $appName, $appDirNamePattern) {
 
 function Download-Hadoop-Windows-Binaries() {
     $files = [IO.Directory]::GetFiles($HadoopWindowsBinaryDownloadDir)  # Get-ChildItem -File $HadoopWindowsBinaryDownloadDir
-    
-    $page = Invoke-WebRequest $HadoopWindowsBinaryUrl
+    $html = Invoke-WebRequest -Uri $HadoopWindowsBinaryUrlHead -UseBasicParsing
+    $versionPattern = [regex]::Replace($HadoopVersion, "^(\d+)\.(\d+).*", '$1.*?$2')
+    $exactVersionFolderPattern = "^.*?/master/(hadoop[^/]*?" + $versionPattern + "[^/]+?)(/bin/?)?\s*$"
+    $versionFolder = $html.Links | select href | msr -it $exactVersionFolderPattern -o '$1' -T 1 -PAC
+    if ([string]::IsNullOrEmpty($versionFolder)) {
+        Write-Host -ForegroundColor Yellow "Will use latest Hadoop utils version folder, due to cannot get exact match with pattern: $exactVersionFolderPattern from $HadoopWindowsBinaryUrlHead"
+        $versionFolder = $html.Links | select href | msr -it "^.*?/master/(hadoop[^/]+?)(/bin/?)?\s*$" -o '$1' -T 1 -PAC
+    }
+
+    $hadoopUtilsUrl = $HadoopWindowsBinaryUrlHead.TrimEnd('/') + "/" + $versionFolder.Trim('/') + "/bin/"
+    Write-Host -ForegroundColor Cyan "Hadoop winutil folder: $hadoopUtilsUrl"
+    $page = Invoke-WebRequest $hadoopUtilsUrl
     $pattern = '<a.*?href=\"(.*?/winutils/blob/master/hadoop[^/]*/bin)/([^/\"]+)\"'
     $mode = [System.Text.RegularExpressions.RegexOptions]::IgnoreCase -bor [System.Text.RegularExpressions.RegexOptions]::Multiline
     $regex = New-Object System.Text.RegularExpressions.Regex($pattern, $mode)
     $matches = $regex.Matches($page.RawContent)
     if($matches.Count -lt 1) {
-        Write-Error "Cannot find hadoop winutil files in $HadoopWindowsBinaryUrl, please check version or pattern: $pattern"
+        Write-Error "Cannot find hadoop winutil files in $hadoopUtilsUrl, please check version or pattern: $pattern"
         exit -1
     }
 
     $totalFiles = $matches.Count
-    
+
     if($files.Count -ge $matches.Count) {
         Write-Host -ForegroundColor Cyan "Already exists $totalFiles files in $HadoopWindowsBinaryDownloadDir"
         return
     }
 
     Write-Host -ForegroundColor Green "Downloading" $matches.Count "Hadoop winutils files save to $HadoopWindowsBinaryDownloadDir"
-    $homePage = [System.Text.RegularExpressions.Regex]::Match($HadoopWindowsBinaryUrl, "^(\w*://[^/]+)").Value
+    $homePage = [System.Text.RegularExpressions.Regex]::Match($hadoopUtilsUrl, "^(\w*://[^/]+)").Value
 
     $number = 0
     foreach($match in $matches) {
@@ -747,7 +758,8 @@ if(($ForceOverwriteConfig -or [String]::IsNullOrWhiteSpace($SparkDirectory)) -an
     Write-Host "SparkDirectory = " -ForegroundColor Green $SparkDirectory
 }
 
-if(($ForceOverwriteConfig -or [String]::IsNullOrWhiteSpace($HadoopDirectory)) -and -not $SkipHadoop) {
+$HadoopWinUtilsExePath = [IO.Path]::Combine($HadoopDirectory, "bin", "$WinutilsExeName")
+if(($ForceOverwriteConfig -or [String]::IsNullOrWhiteSpace($HadoopDirectory) -or -not $(Test-Path $HadoopWinUtilsExePath)) -and -not $SkipHadoop) {
     $url, $name, $dirName = Get-Hadoop-Download-Url-FileName-DirectoryName
     Check-Download-Extract-App $url $name "Hadoop" $HadoopDirectoryNamePattern $dirName
     $HadoopDirectory = Get-App-Directory $HadoopDirectoryNamePattern $dirName
@@ -755,7 +767,8 @@ if(($ForceOverwriteConfig -or [String]::IsNullOrWhiteSpace($HadoopDirectory)) -a
 
     $hadoopBin = Join-Path $HadoopDirectory "bin"
     Download-Hadoop-Windows-Binaries
-    Copy-Item "$HadoopWindowsBinaryDownloadDir\*" $hadoopBin -Force
+    # Copy-Item "$HadoopWindowsBinaryDownloadDir\*" $hadoopBin -Force
+    robocopy /xc /xn /xo $HadoopWindowsBinaryDownloadDir $hadoopBin
     Update-Hadoop-Settings $HadoopDirectory
     Init-Hadoop $HadoopDirectory $ForceOverwriteConfig
 }

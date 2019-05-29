@@ -35,7 +35,7 @@ git status
 exit /b 0
 
 :ShowUage
-    echo Usage:   %0  [Is_Just_Show_Commands](default: 1)
+    echo Usage:   %0  Is_Just_Show_Commands
     echo Example: %0  1
     echo Example: %0  0
     exit /b 0

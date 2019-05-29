@@ -18,6 +18,7 @@ if (! ($env:PATH -icontains $scriptDirectory)) {
     $env:PATH = $scriptDirectory + ";" + $env:PATH
 }
 
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;
 
 if( -not $(Get-Command msr.exe > $null 2>$null) -and $(-not $(Test-Path $(Join-Path $scriptDirectory msr.exe) )) ) {
     Invoke-WebRequest -Uri https://github.com/qualiu/msr/blob/master/tools/msr.exe?raw=true -OutFile $(Join-Path $scriptDirectory msr.exe)

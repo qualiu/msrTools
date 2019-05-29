@@ -10,7 +10,7 @@
 @echo off
 SetLocal EnableExtensions EnableDelayedExpansion
 
-call %~dp0\set-path-variables.bat || exit /b !ERRORLEVEL!
+call %~dp0\set-path-variables.bat 0 || exit /b !ERRORLEVEL!
 ::for /f "tokens=*" %%a in ('msr -z "%KAFKA_HOME%" -x \ -o \\ -PAC') do set "KAFKA_HOME_Pattern=%%a"
 
 :: Use -O or -M to hide summary of msr.exe if not found kafka processes.

@@ -13,7 +13,7 @@ if "%~1" == ""          goto :ShowUsage
 if "%~1" == "" ( set /a AddCount=1 ) else (set /a AddCount=%1)
 if "%~2" == "" ( set /a PortBeginForAll=9092 ) else ( set /a PortBeginForAll=%2 )
 
-call %~dp0\set-path-variables.bat || exit /b !ERRORLEVEL!
+call %~dp0\set-path-variables.bat 0 || exit /b !ERRORLEVEL!
 
 :: Get current Newest broker id and file
 for /f "tokens=*" %%a in ('msr -p %KafkaConfigDir% -f "^server-?\d*\.properties$" -it "^\s*broker.id\s*=\s*(\d+).*" -o "$1" -s "\d+" -PAC') do set /a NewestBrokerId=%%a
