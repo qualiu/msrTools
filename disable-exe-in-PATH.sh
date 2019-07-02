@@ -20,7 +20,7 @@ fi
 
 ExeFilePattern=$1
 
-# Dispaly files with pattern %1
+# Display files with pattern %1
 msr -l -p "$PATH" -f $ExeFilePattern --wt --sz -M 2>/dev/null
 
 if [ -f $ThisDir/tmp-disable-exe-path.sh ]; then
