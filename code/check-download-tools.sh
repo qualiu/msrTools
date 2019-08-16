@@ -20,7 +20,7 @@ check_tool() {
     if [ -z "$toolPath" ] || [ ! -f $toolPath ]; then
         toolPath=$ThisDir/$toolName$toolExtension
         if [ ! -f $ThisDir/$toolName$toolExtension ]; then
-            wget "https://github.com/qualiu/msr/blob/master/tools/$toolName$toolExtension?raw=true" -O $toolPath
+            wget "https://github.com/qualiu/msr/blob/master/tools/$toolName$toolExtension?raw=true" -O $toolPath.tmp && mv $toolPath.tmp $toolPath && chmod +x $toolPath
         fi
 
         # echo "toolPath=$toolPath"
@@ -35,6 +35,9 @@ check_tool() {
             export nin=$toolPath
             alias nin=$toolPath
         fi
+
+        ln -s -f $toolPath $ThisDir/$toolName
+        export PATH=$PATH:$ThisDir
     fi
 }
 

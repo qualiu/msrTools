@@ -6,11 +6,18 @@
 
 ThisDir="$( cd "$( dirname "$0" )" && pwd )"
 SYS_TYPE=$(uname | sed 's/_.*//g' | awk '{print tolower($0)}')
+ThisFileName=$(basename $0)
+ThisFilePath=$ThisDir/$ThisFileName
 
 sh $ThisDir/check-download-tools.sh
 if [ $? -ne 0 ]; then
     echo "Failed to call $ThisDir/check-download-tools.sh"
     exit -1
+fi
+
+if [ -f $ThisDir/msr ]; then
+    alias msr=$ThisDir/msr
+    export PATH=$PATH:$ThisDir
 fi
 
 if [ -z "$1" ]; then
@@ -37,9 +44,9 @@ for ((k = 2; k <= $#; k++)) ; do
 done
 
 if [ -z "${msrOptions[@]}" ]; then
-    msrOptions=("--nd" "^\.git$")
+    msrOptions=("--nd" "^\.git$" "--np" "/$ThisFileName$")
 else
-    msrOptions=(${msrOptions[@]} "--np" "[\\\\/]*(\.git)[\\\\/]")
+    msrOptions=(${msrOptions[@]} "--np" "[\\\\/]*(\.git)[\\\\/]|/$ThisFileName$")
 fi
 
 # if path has one directory, add file filter
@@ -64,11 +71,21 @@ echo "## Add/Delete to have only one tail new line in files" | msr -PA -e .+
 msr ${msrOptions[@]} -p $PathToDo ${FileFilter[@]} -S -t "(\S+)\s*$" -o '$1\n' -R -c Add a tail new line to files.
 
 echo "## Convert tab at head of each lines in a file, util all tabs are replaced." | msr -aPA -e .+
+echo ${FileFilter[@]} | msr -t "(^|\s+)--nf\s+" >/dev/null
+if (($? -eq 0)); then
+    SkipConvert4TabForMakeFile=("--nf" "^makefile$|\.mak\w*$|^ThisFileName$")
+else
+    echo ${FileFilter[@]} | msr -t "(^|\s+)--np\s+" >/dev/null
+    if (($? -eq 0)); then
+        SkipConvert4TabForMakeFile=("--np" "(^|[\\/])(makefile|\.mak\w*)$|/$ThisFileName$")
+    fi
+fi
+
 function ConvertTabTo4Spaces() {
     if [ -d $PathToDo ]; then
-        msr ${msrOptions[@]} -p $PathToDo ${FileFilter[@]} -it "^(\s*)\t" -o '$1    ' -R -c Covert TAB to 4 spaces.
+        msr ${msrOptions[@]} -p $PathToDo ${FileFilter[@]} ${SkipConvert4TabForMakeFile[@]} -it "^(\s*)\t" -o '$1    ' -g -1 -R -c Covert TAB to 4 spaces.
     else
-        msr ${msrOptions[@]} -p $PathToDo -it "^(\s*)\t" -o '$1    ' -R -c Covert TAB to 4 spaces.
+        msr ${msrOptions[@]} -p $PathToDo ${SkipConvert4TabForMakeFile[@]} -it "^(\s*)\t" -o '$1    ' -g -1 -R -c Covert TAB to 4 spaces.
     fi
 
     if (($? > 0)); then

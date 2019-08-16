@@ -16,15 +16,18 @@
 where msr.exe 2>nul >nul || if not exist %~dp0\msr.exe powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri https://github.com/qualiu/msr/blob/master/tools/msr.exe?raw=true -OutFile %~dp0\msr.exe"
 where msr.exe 2>nul >nul || set "PATH=%~dp0;%PATH%"
 
-:: To avoid missing non-English link file name like: VS 2019的开发人员命令提示符.lnk
-for /f "tokens=*" %%a in ('dir "%ProgramData%\Microsoft\Windows\Start Menu\Programs"\v*s*20*.lnk /S /B /O:D ^| nin nul "^(.+?)[^\\]+$" -uPAC -T 1') do (
-    for /f "tokens=*" %%b in ('powershell -Command "[IO.directory]::GetFiles('%%a', '*.lnk') | ForEach-Object { (New-Object -COM WScript.Shell).CreateShortcut(\"$_\").Arguments }" ^| msr -t "^\s*/\w+\s*(.+\.(bat|cmd)\W*$)" -o "$1" -PAC -T 1') do call "%%~b"
+msr -z "NotFirstArg%~1" -t "^NotFirstArg(-h|--help|/\?)$" > nul
+if %ERRORLEVEL% NEQ 0 (
+    echo Usage: %0  [MustContainWordsForVisualStudio]
+    echo Example: %0  2019
+    echo Example: %0  2017
+    exit /b -1
 )
 
-( where msbuild.exe 2>nul >nul && where devenv.exe 2>nul >nul ) && exit /b 0
+if not "%~1" == "" set MatchVSArgs=-ix "%~1"
 
 :: Get path like: C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Visual Studio 2017\Visual Studio Tools\Developer Command Prompt for VS 2017.lnk
-for /f "tokens=*" %%a in ('msr -rp "%ProgramData%\Microsoft\Windows\Start Menu\Programs" -d "Visual Studio" -l -f "Develop.*\.lnk$" -PAC ^| msr -s "[^\\]+?(\d+)[^\\]*$" -PAC -T 1') do (
+for /f "tokens=*" %%a in ('msr -rp "%ProgramData%\Microsoft\Windows\Start Menu\Programs" -d "Visual Studio" -l -f "Develop.*Promp.*\.lnk$" -PAC ^| msr %MatchVSArgs% -s "[^\\]+?(\d+)[^\\]*$" -PAC -T 1') do (
     for /f "tokens=*" %%b in ('powershell -Command "(New-Object -COM WScript.Shell).CreateShortcut('%%a').Arguments" ^| msr -t "^\s*/\w+\s*" -o "" -PAC') do (
        :: Cannot direct call %%b , for VS2015 extra double quotes: ""C:\Program Files (x86)\Microsoft Visual Studio 14.0\Common7\Tools\VsDevCmd.bat""
        for /f "tokens=*"  %%c in ('echo %%~b') do call "%%~c"
@@ -32,6 +35,15 @@ for /f "tokens=*" %%a in ('msr -rp "%ProgramData%\Microsoft\Windows\Start Menu\P
 )
 
 ( where msbuild.exe 2>nul >nul && where devenv.exe 2>nul >nul ) && exit /b 0
+
+
+:: To avoid missing non-English link file name like: VS 2019的开发人员命令提示符.lnk
+for /f "tokens=*" %%a in ('dir "%ProgramData%\Microsoft\Windows\Start Menu\Programs"\v*s*20*.lnk /S /B /O:D ^| nin nul "^(.+?)[^\\]+$" %MatchVSArgs% -uPAC -T 1') do (
+    for /f "tokens=*" %%b in ('powershell -Command "[IO.directory]::GetFiles('%%a', '*.lnk') | ForEach-Object { (New-Object -COM WScript.Shell).CreateShortcut(\"$_\") }" ^| msr -it "\.(cmd|bat)" -PAC ^| msr -it ".*?\W([A-Z]:\\\w+.*?\.(bat|cmd)).*" -o "$1" -aPAC -s "(\d{2,}+\S*)" -T 1') do call "%%~b"
+)
+
+( where msbuild.exe 2>nul >nul && where devenv.exe 2>nul >nul ) && exit /b 0
+
 
 for /f "tokens=*" %%a in ('set VS ^| msr -it "^vs\d+\w+Tools=(.+?)\\?\s*$" -s "^(\w+)" -o "$1" -PAC -T 1') do (
     for /f "tokens=*" %%b in ('msr -p "%%a" -f "^(VsDevCmd|vsvar\w+)\.(cmd|bat)$" -l -PAC -H 1') do (
