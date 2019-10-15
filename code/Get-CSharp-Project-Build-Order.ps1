@@ -20,21 +20,21 @@ if (! ($env:PATH -icontains $scriptDirectory)) {
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;
 
-if( -not $(Get-Command msr.exe > $null 2>$null) -and $(-not $(Test-Path $(Join-Path $scriptDirectory msr.exe) )) ) {
+if( -not $(Get-Command msr.exe 2>$null) -and $(-not $(Test-Path $(Join-Path $scriptDirectory msr.exe) )) ) {
     Invoke-WebRequest -Uri https://github.com/qualiu/msr/blob/master/tools/msr.exe?raw=true -OutFile $(Join-Path $scriptDirectory msr.exe)
 }
 
-if( -not $(Get-Command nin.exe > $null 2>$null) -and $(-not $(Test-Path $(Join-Path $scriptDirectory nin.exe) )) ) {
+if( -not $(Get-Command nin.exe 2>$null) -and $(-not $(Test-Path $(Join-Path $scriptDirectory nin.exe) )) ) {
     Invoke-WebRequest -Uri https://github.com/qualiu/msr/blob/master/tools/nin.exe?raw=true -OutFile $(Join-Path $scriptDirectory nin.exe)
 }
 
 Push-Location -Path $SourceFolder
 
-# msr -rp . --nd "^(\.git|package|obj|release|debug|node_mod)" -f "\.csproj$" -it "^\s*<ProjectReference Include=\"(.+?)\">.*" -o "$1" -M | msr -t "^(\S+\\)?([^\\]+?):\d+:\s*(\S+)" -o "$1$2\t$1$3" -PM | msr -t "([^\\\s]+)(\\)\.\.\2" -o "" -g -1 -PIC
+# msr -rp . --nd "^([\.\$]|(Release|Debug|objd?|bin|node_modules|static|dist|target|(Js)?Packages|\w+-packages?)$|__pycache__)" -f "\.csproj$" -it "^\s*<ProjectReference Include=\"(.+?)\">.*" -o "$1" -M | msr -t "^(\S+\\)?([^\\]+?):\d+:\s*(\S+)" -o "$1$2\t$1$3" -PM | msr -t "([^\\\s]+)(\\)\.\.\2" -o "" -g -1 -PIC
 
-$projectList = $(msr -rp . --nd "^(\.git|package|obj|release|debug|node_mod)" -f "\.csproj$" -l -PAC) -split "`n"
+$projectList = $(msr -rp . --nd "^([\.\$]|(Release|Debug|objd?|bin|node_modules|static|dist|target|(Js)?Packages|\w+-packages?)$|__pycache__)" -f "\.csproj$" -l -PAC) -split "`n"
 
-$a = msr -rp . --nd "^(\.git|package|obj|release|debug|node_mod)" -f "\.csproj$" -it '^\s*<ProjectReference Include=\"(.+?)\">.*' -o '\1' -M | msr -t '^(\S+\\)?([^\\]+?):\d+:\s*(\S+)' -o '\1\2\t\1\3' -PM  | msr -t '([^\\\s]+)(\\)\.\.\2' -g -1  -o '\3' -PAC
+$a = msr -rp . --nd "^([\.\$]|(Release|Debug|objd?|bin|node_modules|static|dist|target|(Js)?Packages|\w+-packages?)$|__pycache__)" -f "\.csproj$" -it '^\s*<ProjectReference Include=\"(.+?)\">.*' -o '\1' -M | msr -t '^(\S+\\)?([^\\]+?):\d+:\s*(\S+)' -o '\1\2\t\1\3' -PM  | msr -t '([^\\\s]+)(\\)\.\.\2' -g -1  -o '\3' -PAC
 
 $callerToBaseProjects = New-Object 'System.Collections.Generic.Dictionary[[String],[System.Collections.Generic.HashSet[String]]]'
 $baseToCallerProjects = New-Object 'System.Collections.Generic.Dictionary[[String],[System.Collections.Generic.HashSet[String]]]'

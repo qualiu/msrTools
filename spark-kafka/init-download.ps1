@@ -93,7 +93,7 @@ function Check-Create-Directory($directory) {
 Check-Create-Directory $ToolDir
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;
 
-if( -not $(Get-Command msr.exe > $null 2>$null) ) {
+if( -not $(Get-Command msr.exe 2>$null) ) {
     if (-not $(Test-Path $(Join-Path $ToolDir msr.exe))) {
         Invoke-WebRequest -Uri https://github.com/qualiu/msr/blob/master/tools/msr.exe?raw=true -OutFile $(Join-Path $ToolDir msr.exe)
     }

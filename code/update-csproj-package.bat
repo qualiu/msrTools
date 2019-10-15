@@ -14,5 +14,5 @@ if !ERRORLEVEL! EQU 1 (
     exit /b 0
 )
 
-msr -rp . --nd "^(\.git|package|obj|release|debug|node_mod)" -f "^packages.config$" -it "(id=\"%~1\"\s+version)\s*=\s*\".+?\"" -o "$1=\"%~2\"" -j -Rc
-msr -rp . --nd "^(\.git|package|obj|release|debug|node_mod)" -f "\.csproj$" -it "(HintPath.*\\%~1)\.\d+\.\S+?(\\\w+)" -o "${1}%~2$2" -j -R -c
+msr -rp . --nd "^([\.\$]|(Release|Debug|objd?|bin|node_modules|static|dist|target|(Js)?Packages|\w+-packages?)$|__pycache__)" -f "^packages.config$" -it "(id=\"%~1\"\s+version)\s*=\s*\".+?\"" -o "$1=\"%~2\"" -j -Rc
+msr -rp . --nd "^([\.\$]|(Release|Debug|objd?|bin|node_modules|static|dist|target|(Js)?Packages|\w+-packages?)$|__pycache__)" -f "\.csproj$" -it "(HintPath.*\\%~1)\.\d+\.\S+?(\\\w+)" -o "${1}%~2$2" -j -R -c
