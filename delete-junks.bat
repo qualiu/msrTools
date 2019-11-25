@@ -1,6 +1,8 @@
 ::===================================================
 :: Delete junk files and directories.
 ::===================================================
+@if %PATH:~-1%==\ set PATH=%PATH:~0,-1%
+
 @echo off
 SetLocal EnableExtensions EnableDelayedExpansion
 

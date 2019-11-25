@@ -11,6 +11,8 @@
 :: Latest version in: https://github.com/qualiu/msrTools/
 :: ############################################################################
 
+@if %PATH:~-1%==\ set PATH=%PATH:~0,-1%
+
 @echo off
 SetLocal EnableExtensions EnableDelayedExpansion
 
@@ -58,7 +60,7 @@ echo !TestPureNumbers! | msr -t "[^\d ]" -c Check if input args are not just PID
 if !ERRORLEVEL! EQU 0 (
     for /f "tokens=*" %%a in ('echo !TestPureNumbers! ^| msr -t "\s*(\d+)\s*" -o "$1|" -PAC ^| msr -t "\s*\|\s*$" -o "" -aPAC') do set "PIDPattern=%%a"
     for /f "tokens=*" %%a in ('echo %* ^| msr -t "(!PIDPattern!)\s*" -o " " -PAC') do set AllArgs=%%a
-    
+
     set PidFilter=-b "^^CommandLine=" -Q "^^ProcessId=" -t "^^ProcessId=(!PIDPattern!)\s*" -aPAC
     call wmic process get %WMIC_ARGS% | msr !PidFilter! | msr !ColumnReplace! -PACc | msr %RemoveEmptyTail% | msr !AllArgs! %NoPathToCall%
 ) else (

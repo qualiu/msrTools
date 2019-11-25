@@ -4,6 +4,8 @@
 :: Latest version in: https://github.com/qualiu/msrTools/
 ::==============================================================================
 
+@if %PATH:~-1%==\ set PATH=%PATH:~0,-1%
+
 @echo off
 SetLocal EnableExtensions EnableDelayedExpansion
 

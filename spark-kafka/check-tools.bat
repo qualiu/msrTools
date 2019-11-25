@@ -1,4 +1,6 @@
 :: Download basic tools for utility and killing/checking processes.
+@if %PATH:~-1%==\ set PATH=%PATH:~0,-1%
+
 @echo off
 set TestRootDir=%~dp0
 if %TestRootDir:~-1%==\ set TestRootDir=%TestRootDir:~0,-1%

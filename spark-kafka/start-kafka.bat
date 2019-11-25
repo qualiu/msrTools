@@ -2,6 +2,8 @@
 :: Check and start Kafka
 ::===============================================================
 
+@if %PATH:~-1%==\ set PATH=%PATH:~0,-1%
+
 @echo off
 SetLocal EnableExtensions EnableDelayedExpansion
 
@@ -51,7 +53,7 @@ exit /b !ERRORLEVEL!
             set killOneCmdPattern=-ix %KafkaConfigDir%\!oneKafkaConfig! -t cmd.exe --nx msr.exe
             set oneKafkaProcessPattern=-ix %KafkaConfigDir%\!oneKafkaConfig! -t java.exe --nx msr.exe
         )
-        
+
         set /a kafkaServerNodeCount=!kafkaServerNodeCount!+1
         :: echo psall !oneKafkaProcessPattern!
         call psall !oneKafkaProcessPattern! > nul
@@ -64,7 +66,7 @@ exit /b !ERRORLEVEL!
             ping 127.0.0.1 -n 3 -w 1000 > nul 2>nul
         )
     )
-    
+
     :: Wait for Kafka process nodes
     set KafkaProcessPattern=-it "%KAFKA_HOME_Pattern%\S+config\\server-?\d*.properties" -x java.exe --nx msr.exe
     ::echo kafkaServerNodeCount=!kafkaServerNodeCount!, KafkaProcessPattern=!KafkaProcessPattern!
@@ -75,5 +77,5 @@ exit /b !ERRORLEVEL!
         ::powershell -Command "Start-Sleep -Seconds 3"
         ping 127.0.0.1 -n 3 -w 1000 > nul 2>nul
     )
-    
+
     exit /b -1

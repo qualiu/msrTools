@@ -8,6 +8,8 @@
 ::
 :: More/Dependency scripts: https://github.com/qualiu/msrTools
 :: ==================================================================================================
+@if %PATH:~-1%==\ set PATH=%PATH:~0,-1%
+
 @echo off
 
 where msr.exe /q || if not exist %~dp0\msr.exe powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri https://github.com/qualiu/msr/blob/master/tools/msr.exe?raw=true -OutFile %~dp0\msr.exe"

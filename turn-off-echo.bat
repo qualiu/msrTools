@@ -3,6 +3,8 @@
 :: Basically, Replace "echo on" to "echo off" :
 :: msr -rp directory1,file1 -f "\.(bat|cmd)$" -it "^(\s*@\s*echo)\s+off\b" -o "$1 on" -R
 ::=================================================
+@if %PATH:~-1%==\ set PATH=%PATH:~0,-1%
+
 @echo off
 SetLocal EnableExtensions EnableDelayedExpansion
 

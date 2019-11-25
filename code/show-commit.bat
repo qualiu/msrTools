@@ -4,6 +4,8 @@
 :: git config --global difftool.bc4.cmd "\"C:\\Program Files\\Beyond Compare 4\\BCompare.exe\" -s \"\$LOCAL\" -d \"\$REMOTE\""
 ::=============================================================================
 
+@if %PATH:~-1%==\ set PATH=%PATH:~0,-1%
+
 @echo off
 SetLocal EnableExtensions EnableDelayedExpansion
 

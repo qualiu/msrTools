@@ -1,6 +1,8 @@
 ::==================================================================
 :: Modify a package version in C# projects. Used to unify versions.
 ::==================================================================
+@if %PATH:~-1%==\ set PATH=%PATH:~0,-1%
+
 @echo off
 SetLocal EnableExtensions EnableDelayedExpansion
 
