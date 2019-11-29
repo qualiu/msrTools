@@ -6,7 +6,7 @@
 ::Step-3: Exit if Save-Directory not provided or SaveDirectory is empty; Otherwise, recursively find the dependents.
 ::======================================================================
 
-@if %PATH:~-1%==\ set PATH=%PATH:~0,-1%
+@if "%PATH:~-1%" == "\" set "PATH=%PATH:~0,-1%"
 
 @echo off
 SetLocal EnableExtensions EnableDelayedExpansion

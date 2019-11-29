@@ -1,4 +1,4 @@
-@if %PATH:~-1%==\ set PATH=%PATH:~0,-1%
+@if "%PATH:~-1%" == "\" set "PATH=%PATH:~0,-1%"
 
 @echo off
 SetLocal EnableExtensions EnableDelayedExpansion

@@ -1,5 +1,5 @@
 :: Get jstack blocks of specified process
-@if %PATH:~-1%==\ set PATH=%PATH:~0,-1%
+@if "%PATH:~-1%" == "\" set "PATH=%PATH:~0,-1%"
 
 @if [%1] == [] (
     echo Usage:   %0  Process_Name_Pattern

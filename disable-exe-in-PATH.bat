@@ -3,7 +3,7 @@
 ::
 :: More scripts: https://github.com/qualiu/msrTools
 ::=============================================================
-@if %PATH:~-1%==\ set PATH=%PATH:~0,-1%
+@if "%PATH:~-1%" == "\" set "PATH=%PATH:~0,-1%"
 
 @echo off
 
