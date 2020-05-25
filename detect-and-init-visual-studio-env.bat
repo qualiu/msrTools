@@ -13,10 +13,13 @@
 @echo off
 
 where msr.exe /q || if not exist %~dp0\msr.exe powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri https://github.com/qualiu/msr/blob/master/tools/msr.exe?raw=true -OutFile %~dp0\msr.exe"
-where msr.exe /q || set "PATH=%~dp0;%PATH%"
+where msr.exe /q || set "PATH=%~dp0;%PATH%;"
 
 where nin.exe /q || if not exist %~dp0\nin.exe powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri https://github.com/qualiu/msr/blob/master/tools/nin.exe?raw=true -OutFile %~dp0\nin.exe"
-where nin.exe /q || set "PATH=%~dp0;%PATH%"
+where nin.exe /q || set "PATH=%~dp0;%PATH%;"
+
+:: Remove duplicate folders to avoid PATH value too long.
+for /f "tokens=*" %%a in ('msr -z "!PATH!;" -t "\\*?\s*;\s*" -o "\n" -aPAC ^| nin nul "(\S+.+)" -uiPAC ^| msr -S -t "[\r\n]+(\S+)" -o ";\1" -PAC') do set "PATH=%%a"
 
 msr -z "NotFirstArg%~1" -t "^NotFirstArg(-h|--help|/\?)$" >nul || (
     echo Usage: %0   [MustContainWordsForVisualStudio]
