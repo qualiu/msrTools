@@ -16,13 +16,20 @@ for /f "tokens=*" %%a in ('git rev-parse --show-toplevel ^| msr -x / -o \ -aPAC'
 for /f "tokens=*" %%a in ('git remote get-url origin') do set "GitUrlHome=%%a"
 popd
 
+msr -z "!GitUrlHome!" -it "github.com" >nul
+set /a IsGithubUrl=!ERRORLEVEL!
+
 if "!GitRepoRootDir!" == "" (
     echo Not found git root. | msr -aPA -t "(.+)" & exit /b -1
 )
 
 for /f "tokens=*" %%a in ('msr -z "%~dp1%~nx1" -ix "!GitRepoRootDir!\\" -o "" -PAC ^| msr -x \ -o / -aPAC') do (
-    set "FileUrl=%GitUrlHome%?version=GB%BranchName%&path=/%%a"
-    REM for /f "tokens=*" %%b in ('powershell "Add-Type -AssemblyName System.Web; [System.Web.HttpUtility]::UrlEncode('/%%a')"') do set "EncodedUrl=%GitUrlHome%?version=GB%BranchName%&path=%%b"
+    if !IsGithubUrl! GTR 0 (
+        set "FileUrl=%GitUrlHome%/blob/!BranchName!/%%a"
+    ) else (
+        set "FileUrl=%GitUrlHome%?version=GB%BranchName%&path=/%%a"
+        REM for /f "tokens=*" %%b in ('powershell "Add-Type -AssemblyName System.Web; [System.Web.HttpUtility]::UrlEncode('/%%a')"') do set "EncodedUrl=%GitUrlHome%?version=GB%BranchName%&path=%%b"
+    )
 )
 
 echo explorer "!FileUrl!" | msr -XIM
