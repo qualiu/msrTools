@@ -13,7 +13,7 @@ if !ERRORLEVEL! EQU 1 (
 pushd %~dp1
 for /f "tokens=*" %%a in ('git rev-parse --abbrev-ref HEAD') do set "BranchName=%%a"
 for /f "tokens=*" %%a in ('git rev-parse --show-toplevel ^| msr -x / -o \ -aPAC') do set "GitRepoRootDir=%%a"
-for /f "tokens=*" %%a in ('git remote get-url origin') do set "GitUrlHome=%%a"
+for /f "tokens=*" %%a in ('git remote get-url origin ^| msr -t "://(\S+?):(.+?)@" -o "://" -aPAC') do set "GitUrlHome=%%a"
 popd
 
 msr -z "!GitUrlHome!" -it "github.com" >nul
