@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 #==================================================================
 # Check and fix file style.
 # Latest version in: https://github.com/qualiu/msrTools/
@@ -20,7 +20,8 @@ if [ -f $ThisDir/msr ]; then
     export PATH=$PATH:$ThisDir
 fi
 
-if [ -z "$1" ]; then
+msr -z "NotFirstArg$1" -t "^NotFirstArg(|-h|--help|/\?)$" > /dev/null
+if [ $? -eq 1 ]; then
     echo "Usage  : $0  Files-or-Directories  [options]"
     echo "Example: $0  my.cpp"
     echo "Example: $0  \"my.cpp,my.ps1,my.bat\""
@@ -72,11 +73,11 @@ msr ${msrOptions[@]} -p $PathToDo ${FileFilter[@]} -S -t "(\S+)\s*$" -o '$1\n' -
 
 echo "## Convert tab at head of each lines in a file, util all tabs are replaced." | msr -aPA -e .+
 echo ${FileFilter[@]} | msr -t "(^|\s+)--nf\s+" >/dev/null
-if (($? -eq 0)); then
+if [ $? -eq 0 ]; then
     SkipConvert4TabForMakeFile=("--nf" "^makefile$|\.mak\w*$|^ThisFileName$")
 else
     echo ${FileFilter[@]} | msr -t "(^|\s+)--np\s+" >/dev/null
-    if (($? -eq 0)); then
+    if [ $? -eq 0 ]; then
         SkipConvert4TabForMakeFile=("--np" "(^|[\\/])(makefile|\.mak\w*)$|/$ThisFileName$")
     fi
 fi

@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 ThisDir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 AppDir=$ThisDir/app
 DownloadDir=$ThisDir/downloads
