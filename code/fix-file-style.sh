@@ -1,27 +1,23 @@
 #!/bin/bash
 #==================================================================
 # Check and fix file style.
-# Latest version in: https://github.com/qualiu/msrTools/
+# Latest version in: https://github.com/qualiu/msrTools/code/
 #==================================================================
 
 ThisDir="$( cd "$( dirname "$0" )" && pwd )"
-SYS_TYPE=$(uname | sed 's/_.*//g' | awk '{print tolower($0)}')
-ThisFileName=$(basename $0)
-ThisFilePath=$ThisDir/$ThisFileName
+SYS_TYPE=$(uname -s | sed 's/_.*//g' | awk '{print tolower($0)}')
 
-sh $ThisDir/check-download-tools.sh
+which msr 2>/dev/null 1>&2
 if [ $? -ne 0 ]; then
-    echo "Failed to call $ThisDir/check-download-tools.sh"
-    exit -1
+    sh $ThisDir/../check-download-tools.sh
+    if [ $? -ne 0 ]; then
+        echo "Failed to call $ThisDir/../check-download-tools.sh" >&2
+        exit -1
+    fi
 fi
 
-if [ -f $ThisDir/msr ]; then
-    alias msr=$ThisDir/msr
-    export PATH=$PATH:$ThisDir
-fi
-
-msr -z "NotFirstArg$1" -t "^NotFirstArg(|-h|--help|/\?)$" > /dev/null
-if [ $? -eq 1 ]; then
+msr -z "LostArg$1" -t "^LostArg(|-h|--help|/\?)$" > /dev/null
+if [ $? -ne 0 ]; then
     echo "Usage  : $0  Files-or-Directories  [options]"
     echo "Example: $0  my.cpp"
     echo "Example: $0  \"my.cpp,my.ps1,my.bat\""
@@ -45,9 +41,9 @@ for ((k = 2; k <= $#; k++)) ; do
 done
 
 if [ -z "${msrOptions[@]}" ]; then
-    msrOptions=("--nd" "^\.git$" "--np" "/$ThisFileName$")
+    msrOptions=("--nd" "^\.git$")
 else
-    msrOptions=(${msrOptions[@]} "--np" "[\\\\/]*(\.git)[\\\\/]|/$ThisFileName$")
+    msrOptions=(${msrOptions[@]} "--np" "[\\\\/]*(\.git)[\\\\/]")
 fi
 
 # if path has one directory, add file filter
@@ -60,33 +56,24 @@ if [ ! -f "$PathToDo" ]; then
 fi
 
 echo "## Remove all white spaces if it is a white space line" | msr -PA -e .+
-msr ${msrOptions[@]} -p $PathToDo ${FileFilter[@]} -it "^\s+$" -o "" -R -c Remove all white spaces if it is a white space line.
+msr ${msrOptions[@]} -p $PathToDo ${FileFilter[@]} -t "^\s+$" -o "" -R -c Remove all white spaces if it is a white space line.
+
 
 echo "## Remove white spaces at each line end" | msr -PA -e .+
-msr ${msrOptions[@]} -p $PathToDo ${FileFilter[@]} -it "(\S+)\s+$" -o '$1' -R -c Remove white spaces at each line end.
+msr ${msrOptions[@]} -p $PathToDo ${FileFilter[@]} -t "(\S+)\s+$" -o '$1' -R -c Remove white spaces at each line end.
 
 # echo "## Add a tail new line to files" | msr -PA -e .+
-# msr ${msrOptions[@]} -p $PathToDo -S -t "(\S+)$" -o '$1\n' -R -c Add a tail new line to files.
+# msr ${msrOptions[@]} -p $PathToDo ${FileFilter[@]} -S -t "(\S+)$" -o '$1\n' -R -c Add a tail new line to files.
 
 echo "## Add/Delete to have only one tail new line in files" | msr -PA -e .+
 msr ${msrOptions[@]} -p $PathToDo ${FileFilter[@]} -S -t "(\S+)\s*$" -o '$1\n' -R -c Add a tail new line to files.
 
 echo "## Convert tab at head of each lines in a file, util all tabs are replaced." | msr -aPA -e .+
-echo ${FileFilter[@]} | msr -t "(^|\s+)--nf\s+" >/dev/null
-if [ $? -eq 0 ]; then
-    SkipConvert4TabForMakeFile=("--nf" "^makefile$|\.mak\w*$|^ThisFileName$")
-else
-    echo ${FileFilter[@]} | msr -t "(^|\s+)--np\s+" >/dev/null
-    if [ $? -eq 0 ]; then
-        SkipConvert4TabForMakeFile=("--np" "(^|[\\/])(makefile|\.mak\w*)$|/$ThisFileName$")
-    fi
-fi
-
 function ConvertTabTo4Spaces() {
     if [ -d $PathToDo ]; then
-        msr ${msrOptions[@]} -p $PathToDo ${FileFilter[@]} ${SkipConvert4TabForMakeFile[@]} -it "^(\s*)\t" -o '$1    ' -g -1 -R -c Covert TAB to 4 spaces.
+        msr ${msrOptions[@]} -p $PathToDo ${FileFilter[@]} -it "^(\s*)\t" -o '$1    ' -R -c Covert TAB to 4 spaces.
     else
-        msr ${msrOptions[@]} -p $PathToDo ${SkipConvert4TabForMakeFile[@]} -it "^(\s*)\t" -o '$1    ' -g -1 -R -c Covert TAB to 4 spaces.
+        msr ${msrOptions[@]} -p $PathToDo ${FileFilter[@]} -it "^(\s*)\t" -o '$1    ' -R -c Covert TAB to 4 spaces.
     fi
 
     if (($? > 0)); then
@@ -95,6 +82,7 @@ function ConvertTabTo4Spaces() {
 }
 
 ConvertTabTo4Spaces
+
 
 echo "## Convert line ending style from CR LF to LF for Linux files" | msr -PA -e .+
 FileFilterForLinuxLineEnding=("-f" "^makefile$|\.sh$|\.mak\w*$")
