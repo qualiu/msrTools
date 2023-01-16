@@ -9,7 +9,7 @@ SYS_TYPE=$(uname -s | sed 's/_.*//g' | awk '{print tolower($0)}')
 
 which msr 2>/dev/null 1>&2
 if [ $? -ne 0 ]; then
-    sh $ThisDir/../check-download-tools.sh
+    source $ThisDir/../check-download-tools.sh
     if [ $? -ne 0 ]; then
         echo "Failed to call $ThisDir/../check-download-tools.sh" >&2
         exit -1

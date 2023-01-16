@@ -17,7 +17,7 @@ param(
     [Parameter(Mandatory = $false)][bool] $NeedEmbedThumbnail = $false
 )
 
-Import-Module "$PSScriptRoot/../common/Check-Tools.psm1"
+Import-Module "$PSScriptRoot/../common/BasicOsUtils.psm1"
 Import-Module "$PSScriptRoot/../common/CommonUtils.psm1"
 
 if ($MyInvocation.Line -imatch '\s+-+help') {
@@ -26,9 +26,9 @@ if ($MyInvocation.Line -imatch '\s+-+help') {
     exit 0
 }
 
-Test-ToolAndInstall "youtube-dl"
-Test-ToolAndInstall "ffmpeg"
+Test-InstallApp "youtube-dl"
+Test-InstallApp "ffmpeg"
 
 if ($NeedEmbedThumbnail) {
-    Test-ToolAndInstall "AtomicParsley"
+    Test-InstallApp "AtomicParsley"
 }

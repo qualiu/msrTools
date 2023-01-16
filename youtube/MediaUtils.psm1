@@ -1,4 +1,4 @@
-Import-Module "$PSScriptRoot/../common/Check-Tools.psm1"
+Import-Module "$PSScriptRoot/../common/BasicOsUtils.psm1"
 Import-Module "$PSScriptRoot/../common/CommonUtils.psm1"
 
 function Show-AudioTips {

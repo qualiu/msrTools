@@ -32,7 +32,7 @@
     ./Extract-Audio-Slice.ps1 sutra.mp4  -SavePath ./audio.mp3  -vn -c:a aac -ss 0 -t 45
     ./Extract-Audio-Slice.ps1 sutra.aac  -SavePath ./ -vn -c:a aac -ss 0 -t 600
     ./Extract-Audio-Slice.ps1 sutra.aac  -SavePath .  -ss 0 -t 600 -vn -c:a aac
-    ./Extract-Audio-Slice.ps1 sutra.mp4  -SavePath ./audio.falc -vn -acodec flac -bits_per_raw_sample 16 -ar 44100
+    ./Extract-Audio-Slice.ps1 sutra.mp4  -SavePath ./audio.flac -vn -acodec flac -bits_per_raw_sample 16 -ar 44100
     ./Extract-Audio-Slice.ps1 sutra.mp4  -SavePath ./audio.flac -vn -acodec copy
     ./Extract-Audio-Slice.ps1 sutra.mp4  -SavePath ./audio.flac -c:a flac
     ./Extract-Audio-Slice.ps1 sutra.mp4  -SavePath ./audio.flac -c:a flac -compression_level 12
@@ -55,7 +55,7 @@ param(
     [Parameter(ValueFromRemainingArguments)] [string[]] $OtherArgs = @('-accurate_seek') #, '-codec', 'copy', '-avoid_negative_ts', '1')
 )
 
-Import-Module "$PSScriptRoot/../common/Check-Tools.psm1"
+Import-Module "$PSScriptRoot/../common/BasicOsUtils.psm1"
 Import-Module "$PSScriptRoot/../common/CommonUtils.psm1"
 Import-Module "$PSScriptRoot/MediaUtils.psm1"
 

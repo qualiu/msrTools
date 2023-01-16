@@ -40,7 +40,7 @@ param(
     [Parameter(ValueFromRemainingArguments)] [string[]] $OtherArgs = @('-codec', 'copy', '-avoid_negative_ts', '1')
 )
 
-Import-Module "$PSScriptRoot/../common/Check-Tools.psm1"
+Import-Module "$PSScriptRoot/../common/BasicOsUtils.psm1"
 Import-Module "$PSScriptRoot/../common/CommonUtils.psm1"
 Import-Module "$PSScriptRoot/MediaUtils.psm1"
 
