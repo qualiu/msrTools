@@ -31,7 +31,7 @@
 param(
     [Parameter(Mandatory = $true)][string] $SourcePaths,
     [string] $FileNamePattern = '\.psm?1$',
-    [string] $SearchImportPattern = '^\s*#?\s*Import-Module\s+(.+\.psm1)',
+    [string] $SearchImportPattern = '^\s*Import-Module\s+(.+\.psm1)',
     [string] $ExcludedFolderPattern = '^([\.\$]|(Release|Debug|objd?|bin|node_modules|static|dist|target|(Js)?Packages|\w+-packages?|wwwroot)$|__pycache__)',
     [string] $SkipPaths = '', #'no-skip-sub-paths-with-comma',
     [switch] $ShowDetails

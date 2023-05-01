@@ -25,6 +25,30 @@ function Add-JunkFolderPattern {
 $Global:HasLoadedNewtonJson = $false
 $Global:DefaultNewtonJsonSettings = $null
 
+<#
+.DESCRIPTION
+Java application may fail with messy characters in console output, so we need to change console code page to UTF-8.
+#>
+function Test-ConsoleLanguage {
+    param (
+        [int] $ExpectedCodePage = 65001,
+        [bool] $Change = $false
+    )
+
+    if (-not $IsWindowsOS) {
+        return
+    }
+
+    $currentCodePage = $((chcp) -split '\s*:\s*')[1]
+    if ($currentCodePage -ne $ExpectedCodePage) {
+        if ($Change) {
+            Invoke-CommandLine "chcp $ExpectedCodePage"
+        } else {
+            Show-Warning "Console code page = $currentCodePage not $ExpectedCodePage, please run 'chcp $ExpectedCodePage' to change it if got messy characters error."
+        }
+    }
+}
+
 function Install-JsonNewtonDll {
     param(
         [switch] $ThrowError
@@ -104,18 +128,29 @@ function Get-NowText {
     return [DateTimeOffset]::Now.ToString($Format)
 }
 
-function Get-NowForFileName {
+function Get-TimeTextForFileName {
     param (
+        [Parameter(Mandatory = $true)] $TimeObject,
+        [string] $Format = "yyyy-MM-dd__HH_mm_ss_zzz",
         [bool] $AsVarName = $false
     )
 
-    $text = [DateTimeOffset]::Now.ToString('yyyy-MM-dd__HH_mm_ss_zzz').Replace(':', '_').Replace('+', "_")
+    $text = $TimeObject.ToString($Format).Replace(':', '_').Replace('+', "_")
     if ($AsVarName) {
         return $text.replace('-', '_')
     }
     else {
         return $text
     }
+}
+
+function Get-NowForFileName {
+    param (
+        [bool] $AsVarName = $false,
+        [string] $Format = "yyyy-MM-dd__HH_mm_ss_zzz"
+    )
+
+    return Get-TimeTextForFileName $([DateTimeOffset]::Now) -Format $Format -AsVarName $AsVarName
 }
 
 
@@ -141,18 +176,51 @@ function Add-GitRepoInfo {
     return $repoInfo
 }
 
-function Get-ValidFileName {
+function Get-GitModuleFolders {
     param (
-        [string] $Name,
-        [switch] $AddTime,
+        [Parameter(Mandatory = $true)] $RepoFolder,
+        [bool] $AddSysPathChar = $true,
+        [bool] $AddRepoFolder = $true,
+        [bool] $ReplaceToSysPathChar = $true,
+        [bool] $ShowPaths = $true
+    )
+
+    $SubModuleFolders = if ($AddRepoFolder) { @( $RepoFolder ) } else { @() }
+    # $EmptyTextForMsrReplace = Get-EmptyTextForMsrReplace $MyInvocation
+    # $SubModuleFolders = msr -rp $RepoFolder -k 5 -l --xp "test,mock,/bin/,/obj/,/objd/" --xd --nd "^(\.)" -f "^.gitmodules$" -W -PAC | msr -x .gitmodules -o $EmptyTextForMsrReplace -PAC | Sort-Object -Property Length -Descending
+    Push-Location $RepoFolder
+    $SubModuleFolders += git submodule foreach --quiet "git rev-parse --show-toplevel" 2>$Null # | Sort-Object -Property Length -Descending
+    Pop-Location
+
+    if ($ReplaceToSysPathChar) {
+        $SubModuleFolders = $SubModuleFolders | ForEach-Object { $_.Replace('/', $SysPathChar) }
+    }
+
+    if ($AddSysPathChar) {
+        $SubModuleFolders = $SubModuleFolders | ForEach-Object { $_.TrimEnd($SysPathChar) + $SysPathChar }
+    }
+
+    # $expectedModuleDepth = $SubModuleFolders | ForEach-Object { $a = $_.Split($SysPathChar); $a.Count } | Get-Unique | Sort-Object | Select-Object -First 2 | Select-Object -Last 1
+    # $SubModuleFolders = $SubModuleFolders | Where-Object { $a = $_.Split($SysPathChar); $a.Count -le $expectedModuleDepth }
+    if ($ShowPaths) {
+        Show-Message "Found $($SubModuleFolders.Count) git module folders:"
+        $SubModuleFolders | Write-Host
+    }
+}
+
+function Get-ValidFileNameWithTime {
+    param (
+        [Parameter(Mandatory=$true)] [string] $Name,
+        $TimeObject,
         [switch] $AsVarName,
         [switch] $NoSpace
     )
 
-    if ($AddTime) {
+    if ($TimeObject) {
         $head = [IO.Path]::GetFileNameWithoutExtension($Name)
         $extension = [IO.Path]::GetExtension($Name)
-        $Name = $head + "-at-" + $(Get-NowForFileName) + $extension
+        $timeText = Get-TimeTextForFileName $TimeObject
+        $Name = $head + "-at-" + $timeText + $extension
     }
 
     if ($NoSpace) {
@@ -164,6 +232,18 @@ function Get-ValidFileName {
     }
 
     return [regex]::Replace($Name, "[^\w\. -]", "_")
+}
+
+function Get-ValidFileName {
+    param (
+        [Parameter(Mandatory=$true)] [string] $Name,
+        [switch] $AddTime,
+        [switch] $AsVarName,
+        [switch] $NoSpace
+    )
+
+    $timeObject = if ($AddTime) { [DateTimeOffset]::Now } else { $null }
+    return Get-ValidFileNameWithTime $Name $timeObject -AsVarName:$AsVarName -NoSpace:$NoSpace
 }
 
 function Add-TimeToFilePath {
@@ -338,6 +418,7 @@ function Show-CallStackThrowError {
     )
     Write-AppError $MessageOrException -PropertiesMap $PropertiesMap
     Show-CallStack
+    $TimeLogger.Dispose()
     throw $MessageOrException
 }
 
@@ -800,16 +881,16 @@ function Invoke-CommandLine {
     $beginTime = [DateTime]::Now
     $isRobocopy = $CommandLine -imatch "\bROBOCOPY\s+"
     if ($HideAll) {
-        Write-Output $CommandLine | msr -XA
+        Write-Output $CommandLine | msr -XA $MsrOutStderrArg
     }
     elseif ($isRobocopy -or $HideReturn) {
-        Write-Output $CommandLine | msr -XMI
+        Write-Output $CommandLine | msr -XMI $MsrOutStderrArg
     }
     elseif ($HideCommand) {
-        Write-Output $CommandLine | msr -XP
+        Write-Output $CommandLine | msr -XP $MsrOutStderrArg
     }
     else {
-        Write-Output $CommandLine | msr -XM
+        Write-Output $CommandLine | msr -XM $MsrOutStderrArg
     }
 
     $elapse = [DateTime]::Now - $beginTime
@@ -860,7 +941,7 @@ function Invoke-CommandLine {
             }
             Show-CallStackThrowError $errorText
         }
-        else {
+        elseif (-not $HideReturn -and -not $HideAll) {
             Show-Error $errorText # [console]::Error.WriteLine($errorText)
         }
 
@@ -868,7 +949,7 @@ function Invoke-CommandLine {
             $CurrentTryNumber += 1
             Show-Warning "Will try times-$($CurrentTryNumber) of $($TryTimes) ..."
             Start-Sleep -Seconds $SleepSeconds
-            Invoke-CommandLine $CommandLine $ExitIfFailed $SuccessReturn $SuccessReturnRegex $TryTimes $CurrentTryNumber $HideCommand $HideCommand $HideAll
+            Invoke-CommandLine $CommandLine -ExitIfFailed $ExitIfFailed -SuccessReturn $SuccessReturn -SuccessReturnRegex $SuccessReturnRegex -TryTimes $TryTimes -CurrentTryNumber $CurrentTryNumber -SleepSeconds $SleepSeconds -Tip $Tip -HideCommand $HideCommand -HideReturn $HideReturn -HideAll $HideAll -ErrorActionCommand $ErrorActionCommand -NoThrow:$NoThrow -NotWriteLog:$NotWriteLog
         }
     }
 }
@@ -970,7 +1051,7 @@ function Invoke-CommandLineDirectly {
             }
             Show-CallStackThrowError $errorText
         }
-        else {
+        elseif (-not $HideReturn -and -not $HideAll) {
             Show-Error $errorText # [console]::Error.WriteLine($errorText)
         }
 
@@ -978,7 +1059,7 @@ function Invoke-CommandLineDirectly {
             $CurrentTryNumber += 1
             [console]::Error.WriteLine("Will try times-$($CurrentTryNumber) of $($TryTimes) ...")
             Start-Sleep -Seconds $SleepSeconds
-            Invoke-CommandLineDirectly $CommandLine $ExitIfFailed $SuccessReturn $SuccessReturnRegex $TryTimes $CurrentTryNumber $HideCommand $HideCommand $HideAll
+            Invoke-CommandLineDirectly $CommandLine -ExitIfFailed $ExitIfFailed -SuccessReturn $SuccessReturn -SuccessReturnRegex $SuccessReturnRegex -TryTimes $TryTimes -CurrentTryNumber $CurrentTryNumber -SleepSeconds $SleepSeconds -Tip $Tip -HideCommand $HideCommand -HideReturn $HideReturn -HideAll $HideAll -ErrorActionCommand $ErrorActionCommand -NoThrow $NoThrow -NotWriteLog $NotWriteLog
         }
     }
 }
@@ -1083,6 +1164,17 @@ function Get-SizeAndUnit {
 
     $k = [Math]::Min($k, $units.Length - 1)
     return [Math]::Round($number, $DecimalCount).ToString() + $Separator + $units[$k]
+}
+
+function Get-FileSizeAndUnit {
+    param (
+        [string] $FilePath,
+        [int] $DecimalCount = 3,
+        [string] $Separator = ' '
+    )
+
+    $bytes = $(Get-Item -Path $FilePath | Select-Object -Property Length).Length
+    return Get-SizeAndUnit $bytes $DecimalCount $Separator
 }
 
 function Copy-FilesFromMachine {
@@ -1435,29 +1527,85 @@ function Get-AddableMsrArgs {
     return $addableArgs
 }
 
+enum TimeLogLevel {
+    Message = 0
+    Info = 1
+    Warning = 2
+    Error = 4
+    NoLog = 5
+}
+
+function Get-TimeLogLevel {
+    param (
+        [string] $Level
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Level)) {
+        return [TimeLogLevel]::Message
+    }
+
+    if ($Level -imatch 'NoLog|Off') {
+        return [TimeLogLevel]::NoLog
+    }
+
+    if ($Level -imatch 'Error') {
+        return [TimeLogLevel]::Error
+    }
+
+    if ($Level -imatch 'Warn') {
+        return [TimeLogLevel]::Warning
+    }
+
+    if ($Level -imatch 'Info') {
+        return [TimeLogLevel]::Info
+    }
+
+    if ($Level -imatch 'Warn') {
+        return [TimeLogLevel]::Warning
+    }
+
+    return [TimeLogLevel]::Message
+}
+
 class BeginEndLogger : System.IDisposable {
     [System.DateTimeOffset] $BeginTime
     [String] $CommandLine
     [string] $EventName
     [bool] $ShowFinalTimeCost
-    BeginEndLogger([System.DateTimeOffset] $BeginTime, [string] $CommandLine, [string] $EventName, [bool] $ShowFinalTimeCost) {
-        $this.BeginTime = $BeginTime
-        $this.CommandLine = $CommandLine
-        $this.EventName = $EventName
+    [TimeLogLevel] $LogLevel = [TimeLogLevel]::Message
+
+    BeginEndLogger($invocation, [TimeLogLevel] $LogLevel, [bool] $WriteInfoNow = $true, [bool] $ShowFinalTimeCost = $true) {
+        $this.LogLevel = $LogLevel
+        $this.BeginTime = [System.DateTimeOffset]::Now
         $this.ShowFinalTimeCost = $ShowFinalTimeCost
-        $this.WriteBeginLog()
+        $this.SetInfo($invocation, $WriteInfoNow, $ShowFinalTimeCost)
+
+        Register-EngineEvent -SourceIdentifier PowerShell.Exiting -SupportEvent -Action {
+            $this.Dispose()
+        }
     }
 
-    BeginEndLogger([string] $CommandLine, [string] $EventName, [bool] $ShowFinalTimeCost) {
+    BeginEndLogger($invocation, [bool] $WriteInfoNow = $true, [bool] $ShowFinalTimeCost = $true) {
         $this.BeginTime = [System.DateTimeOffset]::Now
-        $this.CommandLine = $CommandLine
-        $this.EventName = $EventName
         $this.ShowFinalTimeCost = $ShowFinalTimeCost
-        $this.WriteBeginLog()
+        $this.SetInfo($invocation, $WriteInfoNow, $ShowFinalTimeCost)
+
+        Register-EngineEvent -SourceIdentifier PowerShell.Exiting -SupportEvent -Action {
+            $this.Dispose()
+        }
+    }
+
+    [BeginEndLogger] SetLogLevel([string] $Level) {
+        $this.LogLevel = Get-TimeLogLevel $Level
+        return $this
     }
 
     [void] WriteBeginLog() {
         Write-AppEvent $this.EventName @{ "Action" = "Begin" ; "CommandLine" = $this.CommandLine }
+    }
+
+    [TimeSpan] GetElapse() {
+        return [System.DateTimeOffset]::Now - $this.BeginTime
     }
 
     <#
@@ -1471,6 +1619,127 @@ class BeginEndLogger : System.IDisposable {
         }
         Write-AppEvent $this.EventName @{ "Action" = "End" ; "CommandLine" = $this.CommandLine ; } -BeginTime $this.BeginTime
     }
+
+    [void] SetInfo($invocation) {
+        $this.SetInfo($invocation, $true, $true)
+    }
+
+    [void] SetInfo($invocation, [bool] $WriteInfoNow = $true, [bool] $ShowFinalTimeCost = $true) {
+        $this.SetInfo($invocation, [TimeLogLevel]::Message, $WriteInfoNow, $ShowFinalTimeCost)
+    }
+
+    [void] SetInfo($invocation, [TimeLogLevel] $LogLevel, [bool] $WriteInfoNow = $true, [bool] $ShowFinalTimeCost = $true) {
+        $command = Get-QuotedArg $invocation.MyCommand.Source
+        foreach ($key in $invocation.BoundParameters.Keys) {
+            $value = $invocation.BoundParameters[$key]
+            $valueTypeName = $value.GetType().Name
+            if ($($valueTypeName -imatch 'switch')) {
+                if ($value.IsPresent) {
+                    $command += " -$($key)"
+                }
+            }
+            elseif ($valueTypeName -imatch 'bool') {
+                if ($value) {
+                    $command += " -$($key) 1"
+                }
+                else {
+                    $command += " -$($key) 0"
+                }
+            }
+            else {
+                $command += " -$($key) " + $(Get-QuotedArg $value -Quote "'")
+            }
+        }
+        $scriptPath = $invocation.MyCommand.Source
+        $this.EventName = [IO.Path]::GetFileName($scriptPath)
+        $this.CommandLine = $command
+        $this.ShowFinalTimeCost = $ShowFinalTimeCost
+        if ($WriteInfoNow -and ($command -inotmatch '\.psm1$')) {
+            Show-Message $command
+            $this.WriteBeginLog()
+        }
+    }
+
+    [void] ShowMessage([string] $Text) {
+        if ($this.LogLevel -le [TimeLogLevel]::Message) {
+            Show-Message $Text
+        }
+    }
+
+    [void] ShowInfo([string] $Text) {
+        if ($this.LogLevel -le [TimeLogLevel]::Info) {
+            Show-Info $Text
+        }
+    }
+
+    [void] ShowWarning([string] $Text) {
+        if ($this.LogLevel -le [TimeLogLevel]::Warning) {
+            Show-Warning $Text
+        }
+    }
+
+    [void] ShowError([string] $Text, [bool] $ThrowError = $false) {
+        #if ($this.LogLevel -ge [TimeLogLevel]::Error) {
+        Show-Error $Text -ThrowError:$ThrowError
+    }
+
+    [void] ShowError([string] $Text) {
+        #if ($this.LogLevel -ge [TimeLogLevel]::Error) {
+        $this.ShowError($Text, $false)
+    }
+
+    [void] ShowErrorThrow([string] $Text) {
+        # if ($this.LogLevel -ge [TimeLogLevel]::Error) {
+        Show-ErrorThrow $Text
+    }
+
+    [void] ShowErrorOrWarning([string] $Text, [bool] $IsError, [bool] $ThrowError = $false) {
+        if ($IsError) {
+            $this.ShowError($Text, $ThrowError)
+        }
+        else {
+            $this.ShowWarning($Text)
+        }
+    }
+
+    [void] ShowErrorOrWarning([string] $Text, [bool] $IsError) {
+        $this.ShowErrorOrWarning($Text, $IsError, $true)
+    }
+
+    [void] ShowWarningOrInfo([string] $Text, [bool] $IsWarning) {
+        if ($IsWarning) {
+            $this.ShowWarning($Text)
+        }
+        else {
+            $this.ShowInfo($Text)
+        }
+    }
+
+    [void] ShowErrorOrInfo([string] $Text, [bool] $IsError, [bool] $ThrowError = $true) {
+        if ($IsError) {
+            $this.ShowError($Text, $ThrowError)
+        }
+        else {
+            $this.ShowInfo($Text)
+        }
+    }
+
+    [void] ShowErrorOrInfo([string] $Text, [bool] $IsError) {
+        $this.ShowErrorOrInfo($Text, $IsError, $true)
+    }
+
+    [void] ShowErrorOrMessage([string] $Text, [bool] $IsError, [bool] $ThrowError = $true) {
+        if ($IsError) {
+            $this.ShowError($Text, $ThrowError)
+        }
+        else {
+            $this.ShowMessage($Text)
+        }
+    }
+
+    [void] ShowErrorOrMessage([string] $Text, [bool] $IsError) {
+        $this.ShowErrorOrMessage($Text, $IsError, $true)
+    }
 }
 
 function New-BeginEndLogger {
@@ -1479,55 +1748,30 @@ function New-BeginEndLogger {
         [bool] $ShowCommandLine = $true,
         [bool] $ShowFinalTimeCost = $true
     )
-    $command = Get-QuotedArg $invocation.MyCommand.Source
-    foreach ($key in $invocation.BoundParameters.Keys) {
-        $value = $invocation.BoundParameters[$key]
-        $valueTypeName = $value.GetType().Name
-        if ($($valueTypeName -imatch 'switch')) {
-            if ($value.IsPresent) {
-                $command += " -$($key)"
-            }
-        }
-        elseif ($valueTypeName -imatch 'bool') {
-            # if ($IsWindowsOS) {
-            #     $command += " -$($key) $" + $value
-            # }
-            # else {
-            if ($value) {
-                $command += " -$($key) 1"
-            }
-            else {
-                $command += " -$($key) 0"
-            }
-            # }
-        }
-        else {
-            $command += " -$($key) " + $(Get-QuotedArg $value -Quote "'")
-        }
-    }
-    $scriptPath = $invocation.MyCommand.Source
-    $name = [IO.Path]::GetFileName($scriptPath)
-    $logger = New-Object BeginEndLogger($command, $name, $ShowFinalTimeCost)
-    if ($ShowCommandLine) {
-        Show-Message $command
-    }
-    # Register-EngineEvent PowerShell.Exiting -Action { $logger.WriteEndLog() } | Out-Null
+
+    $logger = New-Object BeginEndLogger($invocation, $ShowCommandLine, $ShowFinalTimeCost)
     return $logger
 }
 
+$TimeLogger = New-BeginEndLogger $MyInvocation
 # Install-JsonNewtonDll -ThrowError $false
 
 # Auto generated exports by Update-PowerShell-Module-Exports.ps1
 Export-ModuleMember -Variable ShouldQuoteArgRegex
 Export-ModuleMember -Variable CommonJunkFolderPattern
+Export-ModuleMember -Variable TimeLogger
 Export-ModuleMember -Function Add-JunkFolderPattern
+Export-ModuleMember -Function Test-ConsoleLanguage
 Export-ModuleMember -Function Install-JsonNewtonDll
 Export-ModuleMember -Function Convert-ToJsonBetter
 Export-ModuleMember -Function Convert-FromJsonBetter
 Export-ModuleMember -Function Get-NowText
+Export-ModuleMember -Function Get-TimeTextForFileName
 Export-ModuleMember -Function Get-NowForFileName
 Export-ModuleMember -Function Add-CommonLogInfo
 Export-ModuleMember -Function Add-GitRepoInfo
+Export-ModuleMember -Function Get-GitModuleFolders
+Export-ModuleMember -Function Get-ValidFileNameWithTime
 Export-ModuleMember -Function Get-ValidFileName
 Export-ModuleMember -Function Add-TimeToFilePath
 Export-ModuleMember -Function Get-GitRepoName
@@ -1567,6 +1811,7 @@ Export-ModuleMember -Function Install-AppByNames
 Export-ModuleMember -Function Get-OutputFilePath
 Export-ModuleMember -Function Get-BytesFromSizeUnit
 Export-ModuleMember -Function Get-SizeAndUnit
+Export-ModuleMember -Function Get-FileSizeAndUnit
 Export-ModuleMember -Function Copy-FilesFromMachine
 Export-ModuleMember -Function Get-HtmlLinkText
 Export-ModuleMember -Function Complete-MailAddress
@@ -1579,4 +1824,5 @@ Export-ModuleMember -Function Get-CallArgsForPsBatch
 Export-ModuleMember -Function Get-ProcessByFilter
 Export-ModuleMember -Function Stop-ProcessByFilter
 Export-ModuleMember -Function Get-AddableMsrArgs
+Export-ModuleMember -Function Get-TimeLogLevel
 Export-ModuleMember -Function New-BeginEndLogger

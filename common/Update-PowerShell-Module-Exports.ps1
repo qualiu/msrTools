@@ -23,6 +23,8 @@ param(
 
 Import-Module "$PSScriptRoot/BasicOsUtils.psm1"
 
+$EmptyTextForMsrReplace = Get-EmptyTextForMsrReplace $MyInvocation
+
 $UnifiedToolName = [IO.Path]::GetFileName($MyInvocation.MyCommand.Path)
 $ToolComment = "# Auto generated exports by "
 $LegalVerbFile = Join-Path $SysTmpFolder "legal-function-name-verbs.txt"
@@ -38,7 +40,7 @@ function Remove-OldExports {
     $searchPattern = "(" + $commentsPattern + "|" + $exportPattern + ").*"
 
     Write-Output "`n$(Get-NowText) Clean up existing exports ..."
-    msr -rp $SourcePaths -f "\.psm1$" -it $searchPattern -o "`"`"" -R --nd $ExcludedFolderPattern -T 0
+    msr -rp $SourcePaths -f "\.psm1$" -it $searchPattern -o $EmptyTextForMsrReplace -R --nd $ExcludedFolderPattern -T 0
 
     Write-Output "`n$(Get-NowText) Set one empty tail line ..."
     msr -rp $SourcePaths -f "\.psm1$" -S -t "\s*$" -o "\n" -R --nd $ExcludedFolderPattern -M -T 0

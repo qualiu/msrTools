@@ -109,18 +109,27 @@ function Set-SecretsToEnvironmentVariables {
         [Parameter(Mandatory = $true)] [string] $SourceFile,
         [Parameter(Mandatory = $true)] [string] $KeyVaultName,
         [string] $SearchPattern = "^\s*\w+\S*\s*=\s*\$\{(\w+)\}",
+        [string] $NotFetchKeyPattern = "Enabled|Disabled",
+        $secretNameMap = @{},
         [bool] $SkipExistingEnvValues = $true
     )
 
-    $secretNames = nin $SourceFile nul $SearchPattern -PAC -u
+    $skipExistingPattern = if ([string]::IsNullOrWhiteSpace($NonNullSecretNames.Value)) { "^#-no-skip-$" } else { '^\s*\S*(' + [string]::Join('|', $NonNullSecretNames.Value) + ')\s*=' }
+    if (-not [string]::IsNullOrWhiteSpace($NotFetchKeyPattern)) {
+        $skipExistingPattern += "|" + $NotFetchKeyPattern
+    }
+    $secretNames = nin $SourceFile nul $SearchPattern -PAC -u -i --nt $skipExistingPattern
     if ([string]::IsNullOrEmpty($secretNames)) {
         return
     }
 
     Show-Info "Will fetch $($secretNames.Count) secrets in $($SourceFile) from key vault $($KeyVaultName)"
-    msr -p $SourceFile -t $SearchPattern -M
+    msr -p $SourceFile -it $SearchPattern --nt $skipExistingPattern -M
     $failures = 0
     foreach ($secretName in $secretNames) {
+        if ($secretNameMap -and $secretNameMap.ContainsKey($secretName)) {
+            $secretName = $secretNameMap[$secretName]
+        }
         $existingValue = [Environment]::GetEnvironmentVariable($secretName)
         if (-not [string]::IsNullOrEmpty($existingValue)) {
             if ($SkipExistingEnvValues) {
@@ -142,7 +151,7 @@ function Set-SecretsToEnvironmentVariables {
 
     $setCount = $secretNames.Count - $failures
     # $foreColor = if ($failures -gt 0) { [System.ConsoleColor]::Yellow } else { [System.ConsoleColor]::Green }
-    Show-ErrorOrInfo "Set $($setCount) secrets to environment variables with $($failures) failures, secrets in file $($SourceFile)" -IsError $($failures -gt 0)
+    Show-ErrorOrInfo "Set $($setCount) secrets to environment variables with $($failures) failures, defined from file $($SourceFile)" -IsError $($failures -gt 0)
     if ($failures -gt 0) {
         Show-Error "Please check if you have permission of $($KeyVaultName) or logged in Azure by 'az login'."
     }
@@ -277,6 +286,81 @@ function Get-AzureObjectUrl {
     return $url
 }
 
+function Set-OrderByAzureStorageFileSize {
+    param (
+        $DataList,
+        [bool] $ShowInfo = $true,
+        [bool] $Descending = $false,
+        [string] $UrlInfo = ''
+    )
+
+    if (-not $DataList.Count -or $DataList.Count -eq 1) {
+        return $DataList
+    }
+
+    $measure = $DataList | Where-Object { $_.properties.contentLength -gt 0 } | Measure-Object
+    $totalBytes = 0
+    if ($measure.Count -gt 0) {
+        $DataList = $DataList | Sort-Object { $_.properties.contentLength } -Descending:$Descending
+        if ($ShowInfo) {
+            foreach ($data in $DataList) {
+                $totalBytes += $data.properties.contentLength
+                $size = Get-SizeAndUnit $data.properties.contentLength
+                Show-Message "Name = $($data.Name), Size = $($size), WriteTime = $($data.lastWriteTime)"
+            }
+        }
+    }
+
+    $measure = $DataList | Where-Object { $_.contentLength -gt 0 } | Measure-Object
+    if ($measure.Count -gt 0) {
+        $DataList = $DataList | Sort-Object { $_.properties.contentLength } -Descending:$Descending
+        if ($ShowInfo) {
+            foreach ($data in $DataList) {
+                $totalBytes += $data.contentLength
+                $size = Get-SizeAndUnit $data.contentLength
+                Show-Message "Name = $($data.Name), Size = $($size), WriteTime = $($data.lastWriteTime)"
+            }
+        }
+    }
+
+    if ($totalBytes -gt 0) {
+        $totalSize = Get-SizeAndUnit $totalBytes
+        $tail = if ([string]::IsNullOrEmpty($UrlInfo)) { "" } else { "in $($UrlInfo)"}
+        Show-Info "Found $($DataList.Count) files $($totalSize) $($tail)"
+        return $DataList
+    }
+
+    Show-ErrorThrow "Unable to sort DataList."
+}
+
+function Get-SortedAzureStorageFiles {
+    param (
+        [Parameter(Mandatory = $true)] [string] $AccountName,
+        [Parameter(Mandatory = $true)] [string] $ShareName,
+        [string] $SubPath = '',
+        [bool] $ShowInfo = $true,
+        [bool] $OutputNameOnly = $false,
+        [bool] $Descending = $false
+    )
+
+    $dataList = if ([string]::IsNullOrWhiteSpace($SubPath)) {
+        Show-Message "az storage file list --account-name $($AccountName) --share-name $($ShareName) --only-show-errors"
+        $(az storage file list --account-name $AccountName --share-name $ShareName --only-show-errors | ConvertFrom-Json) | Where-Object { $_.type -ieq 'file' }
+    }
+    else {
+        Show-Message "az storage file list --account-name $($AccountName) --share-name $($ShareName) --path $($SubPath) --only-show-errors"
+        $(az storage file list --account-name $AccountName --share-name $ShareName --path $SubPath --only-show-errors | ConvertFrom-Json) | Where-Object { $_.type -ieq 'file' }
+    }
+
+    $UrlInfo = "https://$($AccountName).file.core.windows.net/$($ShareName.Trim('/'))/$($SubPath)/".TrimEnd('/', ' ') + '/'
+    $dataList = Set-OrderByAzureStorageFileSize $dataList -ShowInfo $ShowInfo -Descending $Descending -UrlInfo $UrlInfo
+    if ($OutputNameOnly) {
+        $outList = $dataList | ForEach-Object { Write-Output $_.name }
+        return $outList
+    }
+    return $dataList
+}
+
 # Auto generated exports by Update-PowerShell-Module-Exports.ps1
 Export-ModuleMember -Variable ParseSubscriptionGroupRegex
 Export-ModuleMember -Function Get-AzureAuthToken
@@ -292,3 +376,5 @@ Export-ModuleMember -Function Test-ShouldSkipObjectByPropertyNames
 Export-ModuleMember -Function Get-AlertRuleByName
 Export-ModuleMember -Function Get-AlertRuleUrlById
 Export-ModuleMember -Function Get-AzureObjectUrl
+Export-ModuleMember -Function Set-OrderByAzureStorageFileSize
+Export-ModuleMember -Function Get-SortedAzureStorageFiles

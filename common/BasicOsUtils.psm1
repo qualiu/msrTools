@@ -8,6 +8,7 @@ $env:HOME = if ([string]::IsNullOrEmpty($env:HOME)) { $env:USERPROFILE } else { 
 $SysPathEnvSeparator = if ($IsWindowsOS) { ';' } else { ':' }
 $SysPathChar = if ($IsWindowsOS) { '\' } else { '/' }
 $SysTmpFolder = if ($IsWindowsOS) { [System.IO.Path]::GetTempPath() } else { '/tmp/' }
+$SysOutNull = if ($IsWindowsOS) { "nul" } else { "/dev/null" }
 $TmpToolPackageFolder = if ($IsWindowsOS) { Join-Path $env:LOCALAPPDATA "ToolPackages" } else { Join-Path $SysTmpFolder "ToolPackages" }
 $PushFolderCmd = if ($IsWindowsOS) { 'pushd' } else { 'cd' }
 $SysUserName = if ([string]::IsNullOrEmpty($env:USERNAME)) { $env:USER } else { $env:USERNAME }
@@ -25,8 +26,123 @@ $DeleteFileCmd = if ($IsWindowsOS) { 'del' } else { 'rm' }
 $ForceDeleteFileCmd = if ($IsWindowsOS) { 'del /f' } else { 'rm -f' }
 $DeleteDirectoryCmd = if ($IsWindowsOS) { 'rd /s' } else { 'rm -r' }
 $ForceDeleteDirectoryCmd = if ($IsWindowsOS) { 'rd /q /s' } else { 'rm -rf' }
+$MsrKeepColorArg = "--keep-color"
+$MsrOutStderrArg = "--to-stderr"
+$MsrOutStderrWithColorArgs = @($MsrKeepColorArg, $MsrOutStderrArg)
+$MsrWarnColorArgs = @("-e", "(((((.+)))))")
 
 Write-Host -ForegroundColor Green "$([DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss zzz')) Please don't forget to check/pull updates of this script repo (Do re-enter PowerShell if *.psm1 files updated)."
+
+function Test-IsLaunchedFromWindowsCMD {
+    param (
+        [Parameter(Mandatory = $true)] $MyInvocation
+    )
+
+    if (-not $IsWindowsOS) {
+        return $false
+    }
+
+    $scriptName = [IO.Path]::GetFileName($MyInvocation.MyCommand.Path)
+    psall.bat -ix PowerShell.exe -t "[\\/]$scriptName" --nx msr.exe -H 0 -PAC
+    return $LASTEXITCODE -gt 0
+}
+
+function Get-EmptyTextForMsrReplace {
+    param (
+        [Parameter(Mandatory = $true)] $MyInvocation
+    )
+
+    if ($(Test-IsLaunchedFromWindowsCMD $MyInvocation) -or $($PSVersionTable.PSVersion.Major -lt 7)) {
+        return "`"`""
+    }
+    else {
+        return ""
+    }
+}
+
+function Restore-EnvVars {
+    param (
+        [bool] $DebugReload = $False
+    )
+    $processEnvs = [System.Environment]::GetEnvironmentVariables([System.EnvironmentVariableTarget]::Process)
+    $sysEnvs = [System.Environment]::GetEnvironmentVariables([System.EnvironmentVariableTarget]::Machine)
+    $userEnvs = [System.Environment]::GetEnvironmentVariables([System.EnvironmentVariableTarget]::User)
+    $pathValueSet = New-Object System.Collections.Generic.HashSet[String]([StringComparer]::OrdinalIgnoreCase)
+    $allPathValues = $($processEnvs['Path'] + ';' + $sysEnvs['Path'] + ';' + $userEnvs['Path']) -Split '\\*\s*;\s*'
+    foreach ($path in $allPathValues) {
+        [void] $pathValueSet.Add($path)
+    }
+    [void] $pathValueSet.Remove('')
+    $nameValueMap = New-Object 'System.Collections.Generic.Dictionary[string,string]'([StringComparer]::OrdinalIgnoreCase)
+    foreach ($name in $processEnvs.Keys) {
+        $nameValueMap[$name] = $processEnvs[$name]
+    }
+    foreach ($name in $sysEnvs.Keys) {
+        $nameValueMap[$name] = $sysEnvs[$name]
+    }
+    foreach ($name in $userEnvs.Keys) {
+        $nameValueMap[$name] = $userEnvs[$name]
+    }
+    if ($nameValueMap.ContainsKey('USERNAME') -and $nameValueMap['USERNAME'] -eq 'SYSTEM') {
+        $nameValueMap['USERNAME'] = [regex]::Replace($processEnvs['USERPROFILE'], '^.*\\', '');
+    }
+    $nameValueMap['PATH'] = $pathValueSet -Join ';'
+    foreach ($name in $nameValueMap.Keys) {
+        [Environment]::SetEnvironmentVariable($name, $nameValueMap[$name], [EnvironmentVariableTarget]::Process)
+        if ($DebugReload) {
+            Write-Host "Reload env-var: $name" -ForegroundColor Cyan
+        }
+    }
+}
+
+function Reset-EnvVars {
+    param (
+        [bool] $DebugReset = $False
+    )
+    $KnownEnvNames = @('ALLUSERSPROFILE', 'APPDATA', 'ChocolateyInstall', 'CommonProgramFiles', 'CommonProgramFiles(x86)', 'CommonProgramW6432',
+        'COMPUTERNAME', 'ComSpec', 'DriverData', 'HOMEDRIVE', 'HOMEPATH', 'LOCALAPPDATA', 'LOGONSERVER', 'NugetMachineInstallRoot', 'NUMBER_OF_PROCESSORS',
+        'OneDrive', 'OS', 'PACKAGE_CACHE_DIRECTORY', 'Path', 'PATHEXT', 'PROCESSOR_ARCHITECTURE', 'PROCESSOR_IDENTIFIER', 'PROCESSOR_LEVEL',
+        'PROCESSOR_REVISION', 'ProgramData', 'ProgramFiles', 'ProgramFiles(x86)', 'ProgramW6432', 'PROMPT', 'PSModulePath', 'PUBLIC', 'SystemDrive',
+        'SystemRoot', 'TEMP', 'TMP', 'UATDATA', 'USERDNSDOMAIN', 'USERDOMAIN', 'USERDOMAIN_ROAMINGPROFILE', 'USERNAME', 'USERPROFILE', 'windir',
+        'CLASSPATH', 'JAVA_HOME', 'GRADLE_HOME', 'MAVEN_HOME', 'CARGO_HOME', 'RUSTUP_HOME', 'GOPATH', 'GOROOT', 'ANDROID_SDK_ROOT', 'ANDROID_NDK_ROOT'
+    )
+
+    $processEnvs = [System.Environment]::GetEnvironmentVariables([System.EnvironmentVariableTarget]::Process)
+    $sysEnvs = [System.Environment]::GetEnvironmentVariables([System.EnvironmentVariableTarget]::Machine)
+    $userEnvs = [System.Environment]::GetEnvironmentVariables([System.EnvironmentVariableTarget]::User)
+    $pathValueSet = New-Object System.Collections.Generic.HashSet[String]([StringComparer]::OrdinalIgnoreCase)
+    $allPathValues = $($sysEnvs['Path'] + ';' + $userEnvs['Path']) -Split '\\*\s*;\s*'
+    foreach ($path in $allPathValues) {
+        [void] $pathValueSet.Add($path)
+    }
+    [void] $pathValueSet.Remove('');
+
+    $nameValueMap = New-Object 'System.Collections.Generic.Dictionary[string,string]'([StringComparer]::OrdinalIgnoreCase)
+    foreach ($name in $sysEnvs.Keys) {
+        $nameValueMap[$name] = $sysEnvs[$name];
+    }
+    foreach ($name in $userEnvs.Keys) {
+        $nameValueMap[$name] = $userEnvs[$name]
+    }
+    if ($nameValueMap.ContainsKey('USERNAME') -and $nameValueMap['USERNAME'] -eq 'SYSTEM') {
+        $nameValueMap['USERNAME'] = [regex]::Replace($processEnvs['USERPROFILE'], '^.*\\', '');
+    }
+    $nameValueMap['PATH'] = $pathValueSet -Join ';'
+    foreach ($name in $processEnvs.Keys) {
+        if (-not $nameValueMap.ContainsKey($name) -and -not $KnownEnvNames.Contains($name)) {
+            [System.Environment]::SetEnvironmentVariable($name, $null, [System.EnvironmentVariableTarget]::Process)
+            if ($DebugReset) {
+                Write-Host "Deleted env-var: $name" -ForegroundColor Magenta
+            }
+        }
+    }
+    foreach ($name in $nameValueMap.Keys) {
+        [System.Environment]::SetEnvironmentVariable($name, $nameValueMap[$name], [System.EnvironmentVariableTarget]::Process)
+        if ($DebugReset) {
+            Write-Host "Set env-var: $name" -ForegroundColor Cyan
+        }
+    }
+}
 
 class GitRepoInfo {
     [string] $BranchName
@@ -35,12 +151,14 @@ class GitRepoInfo {
     [string] $RootFolder
     [string] $HomeUrl
     [string] $RepoName
+    [string] $SubModuleRoot
 
-    GitRepoInfo([string] $branchName, [string] $commitId, [string] $commitTime, [string] $rootFolder, [string] $homeUrl) {
+    GitRepoInfo([string] $branchName, [string] $commitId, [string] $commitTime, [string] $rootFolder, [string] $homeUrl, [string] $subModuleRoot = '') {
         $this.BranchName = $branchName
         $this.CommitId = $commitId
         $this.CommitTime = $commitTime
         $this.RootFolder = $rootFolder
+        $this.SubModuleRoot = $subModuleRoot
         $this.HomeUrl = $homeUrl
         $this.RepoName = [IO.Path]::GetFileName($rootFolder)
     }
@@ -63,9 +181,15 @@ function New-GitRepoInfo {
     $branchName = git rev-parse --abbrev-ref HEAD 2>$null
     $commitId = git rev-list head --max-count=1 2>$null
     $commitTime = git log -1 --format=%cd --date=iso 2>$null
-    $rootFolder = git rev-parse --show-toplevel 2>$null
+    $rootFolder = $(git rev-parse --absolute-git-dir 2>$null) -ireplace '[\\/].git($|[\\/].*)', ''
+    $subModuleRoot = git rev-parse --show-toplevel 2>$null
+
     if (-not [string]::IsNullOrEmpty($rootFolder)) {
         $rootFolder = $rootFolder.Replace('/', $SysPathChar)
+    }
+
+    if (-not [string]::IsNullOrEmpty($subModuleRoot)) {
+        $subModuleRoot = $subModuleRoot.Replace('/', $SysPathChar)
     }
 
     $homeUrl = git remote -v 2>$null | Select-Object -First 1
@@ -84,7 +208,7 @@ function New-GitRepoInfo {
 
     Pop-Location
 
-    $gitRepoInfo = [GitRepoInfo]::new($branchName, $commitId, $commitTime, $rootFolder, $homeUrl)
+    $gitRepoInfo = [GitRepoInfo]::new($branchName, $commitId, $commitTime, $rootFolder, $homeUrl, $subModuleRoot)
     return $gitRepoInfo
 }
 
@@ -198,8 +322,8 @@ function Update-PathEnvToTrimmedAndCompacted {
 function Set-ExecutableAddToPath {
     param (
         [string] $ToolPath,
-        [bool] $SetExecutable,
-        [bool] $AddToPath
+        [bool] $SetExecutable = $true,
+        [bool] $AddToPath = $true
     )
 
     if ($SetExecutable) {
@@ -226,7 +350,9 @@ function Save-WebFileToPath {
         [string] $SaveName,
         [bool] $SetExecutable = $false,
         [bool] $AddToPath = $false,
-        [bool] $IsExeTool = $false
+        [bool] $IsExeTool = $false,
+        [bool] $DebugDownload = $false,
+        [bool] $CanUseCurl = $false
     )
 
     if ([string]::IsNullOrWhiteSpace($SavePath)) {
@@ -267,23 +393,37 @@ function Save-WebFileToPath {
     $checkWgetName = if ($IsWindowsOS) { 'wget.exe' } else { 'wget' }
     $wgetPath = Get-ToolPathByName $checkWgetName
     if (-not [string]::IsNullOrEmpty($wgetPath)) {
+        if ($DebugDownload) {
+            Write-Host "$wgetPath $SourceUrl -O $tmpPath --quiet" -ForegroundColor Cyan
+        }
         & $wgetPath $SourceUrl -O $tmpPath --quiet
     }
     else {
         $checkCurlName = if ($IsWindowsOS) { 'curl.exe' } else { 'curl' }
         $curlPath = Get-ToolPathByName $checkCurlName
-        if (-not [string]::IsNullOrEmpty($curlPath)) {
+        if ($CanUseCurl -and -not [string]::IsNullOrEmpty($curlPath)) {
+            if ($DebugDownload) {
+                Write-Host "$curlPath --silent --show-error --fail $SourceUrl -o $tmpPath" -ForegroundColor Cyan
+            }
             & $curlPath --silent --show-error --fail $SourceUrl -o $tmpPath
         }
         else {
             $ProgressPreference = 'SilentlyContinue'
             [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+            if ($DebugDownload) {
+                Write-Host "Invoke-WebRequest -Uri $SourceUrl -OutFile $tmpPath" -ForegroundColor Cyan
+            }
             Invoke-WebRequest -Uri $SourceUrl -OutFile $tmpPath
         }
     }
 
-    if (-not $?) {
-        DumpErrorStackThrow "Failed to download $($SourceUrl) to $($SavePath)"
+    if ((-not $?) -or -not $([IO.File]::Exists($tmpPath))) {
+        DumpErrorStackThrow "Failed to download $($SourceUrl) to $($tmpPath)"
+    }
+
+    if ($DebugDownload) {
+        $fileBytes = $(Get-Item $tmpPath).Length
+        Write-Host "Size = $($fileBytes)B, downloaded to $($tmpPath)" -ForegroundColor Cyan
     }
 
     Rename-Item -Path $tmpPath -NewName $SavePath -Force
@@ -294,6 +434,22 @@ function Save-WebFileToPath {
     Set-ExecutableAddToPath $SavePath $SetExecutable $AddToPath
 
     return $SavePath
+}
+
+function Get-SysInternalsToolFromWeb {
+    param (
+        [Parameter(Mandatory = $true)] [string] $OneToolUrl
+    )
+    # https://learn.microsoft.com/en-us/sysinternals/downloads/sysinternals-suite
+    $zipPath = Save-WebFileToPath $OneToolUrl -SavePath $SysTmpFolder -CanUseCurl $false
+    $toolName = [IO.Path]::GetFileNameWithoutExtension($zipPath) + ".exe"
+    Write-Host "Will extract downloaded $($OneToolUrl) to $($SysTmpFolder)"
+    Expand-Archive -Path $zipPath -DestinationPath $SysTmpFolder -Force
+    $exePath = Join-Path $SysTmpFolder $toolName
+    if (-not [IO.File]::Exists($exePath)) {
+        DumpErrorStackThrow "Failed to extract tool $($toolName) to $($exePath) from $($OneToolUrl)"
+    }
+    Set-ExecutableAddToPath $exePath
 }
 
 function Install-ToolByUrlIfNotFound {
@@ -354,6 +510,8 @@ function Get-MsrToolByName {
         return
     }
 
+    $kernelName = if ($IsWindowsOS) { '' } else { $(uname -s).ToLower() }
+    $machineArch = if ($IsWindowsOS) { '' } else { $(uname -m).ToLower() }
     $suffix = if ($Name -inotmatch '^(msr|nin)$') {
         ''
     }
@@ -365,17 +523,16 @@ function Get-MsrToolByName {
             '-Win32.exe'
         }
     }
-    elseif ($(uname -s) -ieq 'linux') {
-        if ($(uname -m) -imatch '64') {
-            '.gcc48'
+    elseif (($kernelName -ieq 'linux') -and ($machineArch -imatch 'i386|i686|x86|x64')) {
+        if ($machineArch -imatch 'i386|i686') {
+            '-i386.gcc48'
         }
         else {
-            '-i386.gcc48'
+            '.gcc48'
         }
     }
     else {
-        # ($(uname -s) -ieq 'darwin')
-        "-$(uname -m).$(uname -s)".ToLower()
+        "-$($machineArch).$($kernelName)".ToLower()
     }
 
     for ($urlIndex = 0; $urlIndex -lt $_SourceMsrHomeUrlArray.Count; $urlIndex += 1) {
@@ -402,12 +559,20 @@ if ($IsWindowsOS) {
     Get-MsrToolByName 'pskill.bat'
 }
 
+msr -h -C | msr -t "keep-color" -H 0 -M
+if ($LASTEXITCODE -eq 0) {
+    $MsrKeepColorArg = ''
+    $MsrOutStderrArg = ''
+    $MsrOutStderrWithColorArgs = @()
+}
+
 # Auto generated exports by Update-PowerShell-Module-Exports.ps1
 Export-ModuleMember -Variable Utf8NoBomEncoding
 Export-ModuleMember -Variable IsWindowsOS
 Export-ModuleMember -Variable SysPathEnvSeparator
 Export-ModuleMember -Variable SysPathChar
 Export-ModuleMember -Variable SysTmpFolder
+Export-ModuleMember -Variable SysOutNull
 Export-ModuleMember -Variable TmpToolPackageFolder
 Export-ModuleMember -Variable PushFolderCmd
 Export-ModuleMember -Variable SysUserName
@@ -425,6 +590,14 @@ Export-ModuleMember -Variable DeleteFileCmd
 Export-ModuleMember -Variable ForceDeleteFileCmd
 Export-ModuleMember -Variable DeleteDirectoryCmd
 Export-ModuleMember -Variable ForceDeleteDirectoryCmd
+Export-ModuleMember -Variable MsrKeepColorArg
+Export-ModuleMember -Variable MsrOutStderrArg
+Export-ModuleMember -Variable MsrOutStderrWithColorArgs
+Export-ModuleMember -Variable MsrWarnColorArgs
+Export-ModuleMember -Function Test-IsLaunchedFromWindowsCMD
+Export-ModuleMember -Function Get-EmptyTextForMsrReplace
+Export-ModuleMember -Function Restore-EnvVars
+Export-ModuleMember -Function Reset-EnvVars
 Export-ModuleMember -Function New-GitRepoInfo
 Export-ModuleMember -Function Show-CallStack
 Export-ModuleMember -Function Test-CreateDirectory
@@ -435,6 +608,7 @@ Export-ModuleMember -Function Test-ToolExistsThrowError
 Export-ModuleMember -Function Update-PathEnvToTrimmedAndCompacted
 Export-ModuleMember -Function Set-ExecutableAddToPath
 Export-ModuleMember -Function Save-WebFileToPath
+Export-ModuleMember -Function Get-SysInternalsToolFromWeb
 Export-ModuleMember -Function Install-ToolByUrlIfNotFound
 Export-ModuleMember -Function Install-AppIfNotFound
 Export-ModuleMember -Function Get-MsrDownloadUrl
