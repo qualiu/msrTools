@@ -31,6 +31,11 @@ $MsrOutStderrArg = "--to-stderr"
 $MsrOutStderrWithColorArgs = @($MsrKeepColorArg, $MsrOutStderrArg)
 $MsrWarnColorArgs = @("-e", "(((((.+)))))")
 
+# Clear environment variables below to avoid unexpected errors, skip: 'MSR_NO_COLOR', 'MSR_NOT_WARN_BOM'
+foreach ($envName in @('MSR_EXIT', 'MSR_OUT_INDEX', 'MSR_OUT_FULL_PATH', 'MSR_SKIP_LAST_EMPTY', 'MSR_KEEP_COLOR', 'MSR_UNIX_SLASH')) {
+    [System.Environment]::SetEnvironmentVariable($envName, $null, [System.EnvironmentVariableTarget]::Process)
+}
+
 Write-Host -ForegroundColor Green "$([DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss zzz')) Please don't forget to check/pull updates of this script repo (Do re-enter PowerShell if *.psm1 files updated)."
 
 function Test-IsLaunchedFromWindowsCMD {
