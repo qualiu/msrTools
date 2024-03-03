@@ -272,6 +272,41 @@ function Test-DeleteFiles {
     }
 }
 
+function Update-PathEnvForExe {
+    param (
+        [Parameter(Mandatory = $true)] [string] $ExeName,
+        [switch] $DebugEnvPath
+    )
+
+    if (Test-ToolExistsByName $ExeName) {
+        return
+    }
+
+    $toDetectNames = if ($IsWindowsOS) {
+        @($ExeName, "$ExeName.exe", "$ExeName.cmd", "$ExeName.bat")
+    }
+    else {
+        @($ExeName)
+    }
+
+    $pathsValue = [System.Environment]::GetEnvironmentVariable('PATH', [System.EnvironmentVariableTarget]::Machine);
+    $pathsValue += ';' + [System.Environment]::GetEnvironmentVariable('PATH', [System.EnvironmentVariableTarget]::User);
+    foreach ($directory in $($pathsValue -split '\s*;\s*')) {
+        if ([string]::IsNullOrWhiteSpace($directory)) {
+            continue
+        }
+        foreach ($toDetectName in $toDetectNames) {
+            if (Test-Path $(Join-Path $directory $toDetectName)) {
+                $env:PATH += ';' + $directory + ';'
+                if ($DebugEnvPath) {
+                    Write-Host "Temporarily added new directory to env PATH: $directory" -ForegroundColor Cyan
+                }
+                return
+            }
+        }
+    }
+}
+
 function Get-ToolPathByName {
     param (
         [string] $Name
@@ -280,13 +315,18 @@ function Get-ToolPathByName {
     return $(Get-Command $Name 2>$null).Source
 }
 
+
 function Test-ToolExistsByName {
     param (
         [string] $Name,
         [string] $Message = $null,
-        [bool] $ThrowMessage = $true
+        [bool] $ThrowMessage = $true,
+        [switch] $RefreshEnvFirst
     )
 
+    if ($RefreshEnvFirst) {
+        Update-PathEnvForExe $Name -DebugEnvPath
+    }
     $toolPath = Get-ToolPathByName $Name
     return -not [string]::IsNullOrWhiteSpace($toolPath)
 }
@@ -607,6 +647,7 @@ Export-ModuleMember -Function New-GitRepoInfo
 Export-ModuleMember -Function Show-CallStack
 Export-ModuleMember -Function Test-CreateDirectory
 Export-ModuleMember -Function Test-DeleteFiles
+Export-ModuleMember -Function Update-PathEnvForExe
 Export-ModuleMember -Function Get-ToolPathByName
 Export-ModuleMember -Function Test-ToolExistsByName
 Export-ModuleMember -Function Test-ToolExistsThrowError

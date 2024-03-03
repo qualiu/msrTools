@@ -1498,6 +1498,10 @@ function Stop-ProcessByFilter {
     | msr -t "(.+)" -o "kill \1" -XM
 }
 
+$_old_ErrorActionPreference = $ErrorActionPreference
+$_old_PSNativeCommandUseErrorActionPreference = $PSNativeCommandUseErrorActionPreference
+$ErrorActionPreference = 'SilentlyContinue'
+$PSNativeCommandUseErrorActionPreference = $true
 $msrShortCmdToLongNameMap = @{}
 $msrLongCmdToShortNameMap = @{}
 foreach ($text in $(msr -h -C | msr -q "^\s*-h" -it "^\s*(-[a-z])\s+\[\s*(--\w+[\w-]+)\s*\].*" -o "\1 \2" -PAC)) {
@@ -1505,6 +1509,8 @@ foreach ($text in $(msr -h -C | msr -q "^\s*-h" -it "^\s*(-[a-z])\s+\[\s*(--\w+[
     $msrShortCmdToLongNameMap[$a[0]] = $a[1]
     $msrLongCmdToShortNameMap[$a[1]] = $a[0]
 }
+$ErrorActionPreference = $_old_ErrorActionPreference
+$PSNativeCommandUseErrorActionPreference = $_old_PSNativeCommandUseErrorActionPreference
 
 function Get-AddableMsrArgs {
     param (

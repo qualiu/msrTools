@@ -18,7 +18,8 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string] $SourcePaths,
-    [string] $ExcludedFolderPattern = '^([\.\$]|(Release|Debug|objd?|bin|node_modules|static|dist|target|(Js)?Packages|\w+-packages?|wwwroot)$|__pycache__)'
+    [string] $ExcludedFolderPattern = '^([\.\$]|(Release|Debug|objd?|bin|node_modules|static|dist|target|(Js)?Packages|\w+-packages?|wwwroot)$|__pycache__)',
+    [string] $ExcludeBuiltInVariablesPattern = "^\s*\`$(ErrorActionPreference|PSNativeCommandUseErrorActionPreference|PSDefaultParameterValues|PSModulePath|PSScriptRoot|PSCommandPath|MyInvocation|PSSenderInfo|PSEdition|PSHOME|PSUICulture|PSVersionTable|PID|PPID|PWD|HOME|OLDPWD|PWD|SHELL|SHLVL|USER|USERNAME|LOGNAME)\s*="
 )
 
 Import-Module "$PSScriptRoot/BasicOsUtils.psm1"
@@ -53,7 +54,7 @@ function Write-Exports {
 
     $lines = @()
     $lines += $ToolComment + $UnifiedToolName
-    $lines += msr -t '^\$([A-Z]\w+)\s*=.*' -o "Export-ModuleMember -Variable \1" -PAC -p $OneFilePath
+    $lines += msr -t '^\$([A-Z]\w+)\s*=.*' -o "Export-ModuleMember -Variable \1" --nt $ExcludeBuiltInVariablesPattern -PAC -p $OneFilePath
     $variableCount = $LASTEXITCODE
     $lines += msr -t "^\s*function\s+(\w+-\w+)\s*\{\s*$" -o "Export-ModuleMember -Function \1" -PAC -p $OneFilePath
     $functionCount = $LASTEXITCODE

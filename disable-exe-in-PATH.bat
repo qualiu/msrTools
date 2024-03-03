@@ -11,7 +11,7 @@ SetLocal EnableExtensions EnableDelayedExpansion
 
 set msrExe=%~dp0msr.exe
 
-if not exist %msrExe% powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri https://github.com/qualiu/msr/blob/master/tools/msr.exe?raw=true -OutFile %~dp0msr.exe"
+if not exist %msrExe% powershell -Command "$ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri https://github.com/qualiu/msr/blob/master/tools/msr.exe?raw=true -OutFile %~dp0msr.exe"
 
 %msrExe% -z "NotFirstArg%~1" -t "^NotFirstArg(|-h|--help|/\?)$" >nul || (
     echo Usage  : %~n0  ExeFilePattern     | %msrExe% -aPA -e "%~n0\s+(\S+).*"
@@ -22,7 +22,7 @@ if not exist %msrExe% powershell -Command "[Net.ServicePointManager]::SecurityPr
 )
 
 set ninExe=%~dp0nin.exe
-if not exist %ninExe% powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri https://github.com/qualiu/msr/blob/master/tools/nin.exe?raw=true -OutFile %~dp0nin.exe"
+if not exist %ninExe% powershell -Command "$ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri https://github.com/qualiu/msr/blob/master/tools/nin.exe?raw=true -OutFile %~dp0nin.exe"
 
 :: Display files with exe pattern %1
 %msrExe% -l -f "%~1" --wt --sz 2>nul -M -p "%PATH%" && exit /b 0
