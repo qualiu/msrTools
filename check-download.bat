@@ -1,5 +1,7 @@
 @echo off
 if "%PATH:~-1%" == "\" set "PATH=%PATH:~0,-1%"
+:: Clear environment variables below to avoid unexpected errors, skip: 'MSR_NO_COLOR', 'MSR_NOT_WARN_BOM'
+for %%a in (MSR_EXIT MSR_OUT_INDEX MSR_OUT_FULL_PATH MSR_SKIP_LAST_EMPTY MSR_KEEP_COLOR MSR_UNIX_SLASH) do set "%%a="
 SetLocal EnableExtensions EnableDelayedExpansion
 
 if "%~1" == "-h" (
