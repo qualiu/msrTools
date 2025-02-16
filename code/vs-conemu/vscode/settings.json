@@ -7,7 +7,7 @@
         },
         {
             "aliasName": "gsf",
-            "aliasBody": "git --no-pager diff --name-only $1~1 $1",
+            "aliasBody": "git --no-pager diff --name-only $1~1 $1 $2 $3 $4 $5 $6 $7 $8 $9",
             "description": "Show file list of a git commit(change). The arg is the commit id. Example: gsf HEAD or gsf {commit-hash-id}."
         },
         {
@@ -61,7 +61,17 @@
         {
             "aliasName": "setup-vs-conemu",
             "aliasBody": "PowerShell -ExecutionPolicy Bypass -File C:\\opengit\\msrTools\\code\\vs-conemu\\Setup-ConEmu-VisualStudio.ps1 $*",
-            "description": "Auto configure ConEmu + Visual Studio (replace 'C:\\opengit\\msrTools' to your paths when copy this to your vscode settings.json)."
+            "description": "Auto configure ConEmu + Visual Studio. Replace all 'C:\\opengit\\msrTools' to your paths when copy this to your vscode settings.json"
+        },
+        {
+            "aliasName": "update-vsc-alias",
+            "aliasBody": "echo python C:/opengit/msrTools/code/update_vscode_custom_alias_groups.py -r %APPDATA%/Code/User/settings.json -t $* | msr -XM",
+            "description": "Update other alias settings from your frequently used/tunned settings(%APPDATA%/Code/User/settings.json). Example: update-vsc-alias code/vs-conemu/vscode/settings.json"
+        },
+        {
+            "aliasName": "falias",
+            "aliasBody": "msr -p %APPDATA%/Code/User/settings.json -b \"^\\W+msr.\\w*\\.?\\w+List\\W+$\" -Q \"^\\s*\\]\\W*$\" -PAC | msr -S -t \"(.+?),\\s*$\" -o \"{\\1}\" -PAC | msr -S -t \",(?=\\s*[\\}\\]])\" -o \"\" -aPAC | jq -r \".\\\"msr.commonAliasNameBodyList\\\"[]?, .\\\"msr.bash.commonAliasNameBodyList\\\"[]?, .\\\"msr.cmd.commonAliasNameBodyList\\\"[]? | select(.aliasName == \\\"$1\\\" or (.aliasName | tostring | startswith(\\\"$1\\\"))) | \\\"aliasName = \\(.aliasName)\\naliasBody = \\(.aliasBody)\\ndescription = \\(.description)\\n\\\"\" | msr -aPA -e \"^(\\w+) = \" -t \"(?<=^aliasName = )$1\"",
+            "description": "Find custom alias by name or prefix from %APPDATA%/Code/User/settings.json, then show aliasName + aliasBody + description(example). Example: falias update-vsc"
         }
     ]
 }
