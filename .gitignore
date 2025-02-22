@@ -2,3 +2,4 @@ downloads/
 app/
 *.exe
 .vscode/
+__pycache__/

@@ -1,47 +1,9 @@
 {
-    "msr.commonAliasNameBodyList": [
-        {
-            "aliasName": "forget-host",
-            "aliasBody": "echo ssh-keygen -R $1 | msr -XM && ping -c 3 $1 | msr -t \".*?$1.*?\\D(\\d+\\.\\d+\\.\\d+\\.\\d+).*\" -o \"ssh-keygen -R \\1\" -XM",
-            "description": "Example common alias for Windows + Linux (Forget ssh host to repair SSH login)."
-        },
-        {
-            "aliasName": "gsf",
-            "aliasBody": "git --no-pager diff --name-only $1~1 $1 $2 $3 $4 $5 $6 $7 $8 $9",
-            "description": "Show file list of a git commit(change). The arg is the commit id. Example: gsf HEAD or gsf {commit-hash-id}."
-        },
-        {
-            "aliasName": "git-rm-other-branches",
-            "aliasBody": "git branch | msr -t \"^\\s*(\\w+\\S+)\" -o \"git branch -D \\1\" --nt \"^\\W*(main|master)\\s*$\" $*"
-        }
-    ],
-    "msr.bash.commonAliasNameBodyList": [
-        {
-            "aliasName": "sbc",
-            "aliasBody": "source ~/.bashrc",
-            "description": "Reload alias + env including vscode-msr alias. This alias will be auto copied to Remote SSH + Docker dev-containers."
-        },
-        {
-            "aliasName": "grep-alias",
-            "aliasBody": "msr -p ~/msr-cmd-alias.bashrc $*",
-            "description": "Search alias (bash) like: grep-alias -t grep-alias"
-        }
-    ],
     "msr.cmd.commonAliasNameBodyList": [
         {
-            "aliasName": "grep-alias",
-            "aliasBody": "msr -p %USERPROFILE%\\msr-cmd-alias.doskeys $*",
-            "description": "Search alias (Windows doskeys) like: grep-alias -t grep-alias"
-        },
-        {
-            "aliasName": "grep-vsc",
-            "aliasBody": "msr -p %APPDATA%/Code/User/settings.json $*",
-            "description": "Search alias (Windows doskeys) in vscode settings.json like: grep-vsc -t grep-alias -D 2"
-        },
-        {
-            "aliasName": "rm-alias",
-            "aliasBody": "msr -p %USERPROFILE%/msr-cmd-alias.doskeys -t \"^$1=.*\" -o \"\" -R -M -T 0 & where $1.cmd | msr -t \"(.+)\" -o \"del /f \\1\" -XM",
-            "description": "Remove alias(doskeys) by name + delete its script file if has dumped."
+            "aliasName": "setup-vs-conemu",
+            "aliasBody": "PowerShell -ExecutionPolicy Bypass -File C:\\opengit\\msrTools\\code\\vs-conemu\\Setup-ConEmu-VisualStudio.ps1 $*",
+            "description": "Auto configure ConEmu + Visual Studio. Replace all 'C:\\opengit\\msrTools' to your paths when copy this to your vscode settings.json"
         },
         {
             "aliasName": "gfind-cs-pref",
@@ -49,29 +11,9 @@
             "description": "Search function usages in a C# code repository, filter out tests + definitions."
         },
         {
-            "aliasName": "sfw",
-            "aliasBody": "msr -l -W --unix-slash 0 -M -P -p $*",
-            "description": "Print full file path with Windows slash for an input folder(or file). Example: sfw c:/apps/tools will print c:\\apps\\tools\\{file}"
-        },
-        {
             "aliasName": "git-root",
             "aliasBody": "for /f \"tokens=*\" %a in ('git rev-parse --show-toplevel ^| msr -x / -o \\ -aPAC') do @if not \"%CD%\" == \"%a\" pushd \"%a\"",
             "description": "Change folder to git repository root directory."
-        },
-        {
-            "aliasName": "setup-vs-conemu",
-            "aliasBody": "PowerShell -ExecutionPolicy Bypass -File C:\\opengit\\msrTools\\code\\vs-conemu\\Setup-ConEmu-VisualStudio.ps1 $*",
-            "description": "Auto configure ConEmu + Visual Studio. Replace all 'C:\\opengit\\msrTools' to your paths when copy this to your vscode settings.json"
-        },
-        {
-            "aliasName": "update-vsc-alias",
-            "aliasBody": "echo python C:/opengit/msrTools/code/update_vscode_custom_alias_groups.py -r %APPDATA%/Code/User/settings.json -t $* | msr -XM",
-            "description": "Update other alias settings from your frequently used/tunned settings(%APPDATA%/Code/User/settings.json). Example: update-vsc-alias code/vs-conemu/vscode/settings.json"
-        },
-        {
-            "aliasName": "falias",
-            "aliasBody": "msr -p %APPDATA%/Code/User/settings.json -b \"^\\W+msr.\\w*\\.?\\w+List\\W+$\" -Q \"^\\s*\\]\\W*$\" -PAC | msr -S -t \"(.+?),\\s*$\" -o \"{\\1}\" -PAC | msr -S -t \",(?=\\s*[\\}\\]])\" -o \"\" -aPAC | jq -r \".\\\"msr.commonAliasNameBodyList\\\"[]?, .\\\"msr.bash.commonAliasNameBodyList\\\"[]?, .\\\"msr.cmd.commonAliasNameBodyList\\\"[]? | select(.aliasName == \\\"$1\\\" or (.aliasName | tostring | startswith(\\\"$1\\\"))) | \\\"aliasName = \\(.aliasName)\\naliasBody = \\(.aliasBody)\\ndescription = \\(.description)\\n\\\"\" | msr -aPA -e \"^(\\w+) = \" -t \"(?<=^aliasName = )$1\"",
-            "description": "Find custom alias by name or prefix from %APPDATA%/Code/User/settings.json, then show aliasName + aliasBody + description(example). Example: falias update-vsc"
         }
     ]
 }

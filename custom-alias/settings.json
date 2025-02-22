@@ -1,0 +1,499 @@
+{
+    "msr.commonAliasNameBodyList": [
+        {
+            "aliasName": "forget-host",
+            "aliasBody": "echo ssh-keygen -R $1 | msr -XM && ping -c 3 $1 | msr -t \".*?$1.*?\\D(\\d+\\.\\d+\\.\\d+\\.\\d+).*\" -o \"ssh-keygen -R \\1\" -XM",
+            "description": "Example common alias for Windows + Linux (Forget ssh host to repair SSH login)."
+        },
+        {
+            "aliasName": "git-cherry-pick-branch-new-old-commits-force",
+            "aliasBody": "git log $1 | msr -b \"^commit $2\" -q \"^commit $3\" -t \"^commit (\\w+)\" -o \"\\1\" -M -C | msr -s \"^:(\\d+):\" -n --dsc -t \"^:\\d+:(?:\\d+:)?\\s+(\\w+)\" -o \"git cherry-pick -m 1 -X theirs \\1\" -X -M -V ne0 $4 $5 $6 $7 $8 $9",
+            "description": "Cherry pick commits from an expected branch to current branch, force same with expected branch. Usage: git-cherry-pick-branch-new-old-commits-force expected-branch {newest-commit-need} {oldest-commit-need}"
+        },
+        {
+            "aliasName": "gsf",
+            "aliasBody": "git --no-pager diff --name-only $1~1 $1 $2 $3 $4 $5 $6 $7 $8 $9",
+            "description": "Show file list of a git commit(change). The arg is the commit id. Example: gsf HEAD or gsf {commit-hash-id}."
+        },
+        {
+            "aliasName": "git-commit-grep",
+            "aliasBody": "git log --since=\"20 months ago\" --date=format-local:\"%Y-%m-%d %H:%M:%S %z\" --pretty=format:\"%H %ad %an %s\" --grep $*",
+            "description": "Search git commit with grep pattern. Example: git-commit-grep concurrency"
+        },
+        {
+            "aliasName": "git-content-grep",
+            "aliasBody": "git log --since=\"20 months ago\" --date=format-local:\"%Y-%m-%d %H:%M:%S %z\" --pretty=format:\"%H %ad %an %s\" -S $*",
+            "description": "Search git content with grep pattern. Example: git-content-grep concurrency"
+        },
+        {
+            "aliasName": "git-log-grep",
+            "aliasBody": "git log --since=\"20 months ago\" --date=format-local:\"%Y-%m-%d %H:%M:%S %z\" | msr -b \"^commit \\w+\" -Q \"\" -y -aPAC -it $* | msr -t \"^commit\\W+|Author\\W+|Date\\W+|$1\" -P -e \"^commit\\W+.*|(Author\\W+.*)|Date\\W+.*\"",
+            "description": "Search git log with grep pattern. Example: git-log-grep concurrency"
+        },
+        {
+            "aliasName": "git-dfb",
+            "aliasBody": "git diff $1 | msr -b \"^diff --git\" -Q \"\" -y -t $2 $3 $4 $5 $6 $7 $8 $9 -aPAC | msr -t \"^(diff --git)\\s+a/(.+)\\s+b/.*\" -o \"\\1 \\2\" -aPAC | msr -t \"^diff --git|$2\" -PAC | msr -e \"^diff --git\\s+(.+)\" -aP -t $2 $3 $4 $5 $6 $7 $8 $9",
+            "description": "Search change keywords (Regex pattern) with branch, like git-dfb origin/main \"http.*\""
+        },
+        {
+            "aliasName": "git-dfa",
+            "aliasBody": "git diff origin/main | msr -b \"^diff --git\" -Q \"\" -y -t $* -aPAC | msr -t \"^(diff --git)\\s+a/(.+)\\s+b/.*\" -o \"\\1 \\2\" -aPAC | msr -t \"^diff --git|$1\" -PAC | msr -e \"^diff --git\\s+(.+)\" -aP -t $*",
+            "description": "Search change keywords (Regex pattern) with origin/main, like git-dfm \"http.*\""
+        },
+        {
+            "aliasName": "git-dfm",
+            "aliasBody": "git diff origin/master | msr -b \"^diff --git\" -Q \"\" -y -t $* -aPAC | msr -t \"^(diff --git)\\s+a/(.+)\\s+b/.*\" -o \"\\1 \\2\" -aPAC | msr -t \"^diff --git|$1\" -PAC | msr -e \"^diff --git\\s+(.+)\" -aP -t $*",
+            "description": "Search change keywords (Regex pattern) with origin/master, like git-dfa \"http.*\""
+        },
+        {
+            "aliasName": "glm",
+            "aliasBody": "msr -XIM -z \"git log --date=format-local:\\\"%Y-%m-%d %H:%M:%S %z\\\" --pretty=format:\\\"%H %ad %an %s\\\" --name-only origin/master $*\" --to-stderr --keep-color",
+            "description": "Show brief logs (one line title/description) + changed file lists compared with origin/master branch. Example: glm or glm -n 3"
+        },
+        {
+            "aliasName": "gla",
+            "aliasBody": "msr -XIM -z \"git log --date=format-local:\\\"%Y-%m-%d %H:%M:%S %z\\\" --pretty=format:\\\"%H %ad %an %s\\\" --name-only origin/main $*\" --to-stderr --keep-color",
+            "description": "Show brief logs (one line title/description) + changed file lists compared with origin/main branch. Example: gla or gla -n 3"
+        },
+        {
+            "aliasName": "glc",
+            "aliasBody": "git branch --show-current | msr -t \"(.+)\" -o \"git log --date=format-local:\\\"%Y-%m-%d %H:%M:%S %z\\\" --pretty=format:\\\"%H %ad %an %s\\\" --name-only origin/\\1 $*\" -XIM --to-stderr --keep-color",
+            "description": "Show brief logs (one line title/description) + changed file lists compared with origin/{current} branch.  Example: glc or glc -n 3"
+        },
+        {
+            "aliasName": "glcc",
+            "aliasBody": "git branch --show-current | msr -t \"(.+)\" -o \"git log --date=format-local:\\\"%Y-%m-%d %H:%M:%S %z\\\" --pretty=format:\\\"%H %ad %an %s\\\" --name-only \\1 $*\" -XIM --to-stderr --keep-color",
+            "description": "Show brief logs (one line title/description) + changed file lists in commits of local {current} branch.  Example: glcc or glcc -n 3"
+        },
+        {
+            "aliasName": "gpm",
+            "aliasBody": "echo git pull origin master $* | msr -XM",
+            "description": "Pull origin master branch. Example: gpm --no-edit -X theirs  or  gpm --squash"
+        },
+        {
+            "aliasName": "gpa",
+            "aliasBody": "echo git pull origin main $* | msr -XM",
+            "description": "Pull origin main branch. Example: gpa --no-edit -X theirs or  gpa --squash"
+        },
+        {
+            "aliasName": "gfm",
+            "aliasBody": "echo git fetch origin master $* | msr -XM",
+            "description": "Fetch origin/master branch. Example: gfm --prune"
+        },
+        {
+            "aliasName": "gfa",
+            "aliasBody": "echo git fetch origin main $* | msr -XM",
+            "description": "Fetch origin/main branch. Example: gfa --prune"
+        },
+        {
+            "aliasName": "gdm",
+            "aliasBody": "echo git difftool origin/master $* | msr -XM --to-stderr --keep-color",
+            "description": "Launch GUI difftool (configured in git) to compare 'changed files' of current branch with origin/master."
+        },
+        {
+            "aliasName": "gda",
+            "aliasBody": "echo git difftool origin/main $* | msr -XM --to-stderr --keep-color",
+            "description": "Launch GUI difftool (configured in git) to compare 'changed files' of current branch with origin/main."
+        },
+        {
+            "aliasName": "gdm-a",
+            "aliasBody": "echo git difftool origin/master --diff-filter=A $* | msr -XM --to-stderr --keep-color",
+            "description": "Launch GUI difftool (configured in git) to compare 'newly added files' of current branch with origin/master."
+        },
+        {
+            "aliasName": "gda-a",
+            "aliasBody": "echo git difftool origin/main --diff-filter=A $* | msr -XM --to-stderr --keep-color",
+            "description": "Launch GUI difftool (configured in git) to compare 'newly added files' of current branch with origin/main."
+        },
+        {
+            "aliasName": "gdm-al",
+            "aliasBody": "echo git diff origin/master --name-only --diff-filter=A $* | msr -XM --to-stderr --keep-color",
+            "description": "Show added new file path list between current branch and origin/master. Example: gdm-al  or  gdm-al *.cpp"
+        },
+        {
+            "aliasName": "gdm-l",
+            "aliasBody": "echo git diff origin/master --name-only $* | msr -XM --to-stderr --keep-color",
+            "description": "Show different file path list between current branch and origin/master. Example: gdm-l  or  gdm-l *.cpp"
+        },
+        {
+            "aliasName": "gda-al",
+            "aliasBody": "echo git diff origin/main --name-only --diff-filter=A $* | msr -XM --to-stderr --keep-color",
+            "description": "Show added new file path list between current branch and origin/main. Example: gdm-l  or  gdm-l *.cpp"
+        },
+        {
+            "aliasName": "gdm-m",
+            "aliasBody": "echo git difftool origin/master --diff-filter=M $* | msr -XM --to-stderr --keep-color",
+            "description": "Launch GUI difftool (configured in git) to compare 'modified files' of current branch with origin/master. Example: gdm-m *.cpp"
+        },
+        {
+            "aliasName": "gda-m",
+            "aliasBody": "echo git difftool origin/main --diff-filter=M $* | msr -XM --to-stderr --keep-color",
+            "description": "Launch GUI difftool (configured in git) to compare 'modified files' of current branch with origin/main.  Example: gda-m *.cpp"
+        },
+        {
+            "aliasName": "gdm-ml",
+            "aliasBody": "echo git diff origin/master --name-only --diff-filter=M $* | msr -XM --to-stderr --keep-color",
+            "description": "Show changed file path list between current branch and origin/master. Example: gdm-ml  or  gdm-ml *.cpp"
+        },
+        {
+            "aliasName": "gda-ml",
+            "aliasBody": "echo git diff origin/main --name-only --diff-filter=M $* | msr -XM --to-stderr --keep-color",
+            "description": "Show changed file path list between current branch and origin/main. Example: gda-ml  or  gda-ml *.cpp"
+        },
+        {
+            "aliasName": "gda-l",
+            "aliasBody": "echo git diff origin/main --name-only $* | msr -XM --to-stderr --keep-color",
+            "description": "Show different file path list between current branch and origin/main. Example: gda-l  or  gda-l *.cpp"
+        },
+        {
+            "aliasName": "gdm-d",
+            "aliasBody": "echo git difftool origin/master --diff-filter=D $* | msr -XM --to-stderr --keep-color",
+            "description": "Launch GUI difftool (configured in git) to compare 'deleted files' of current branch with origin/master. Example: gdm-d *.cpp"
+        },
+        {
+            "aliasName": "gda-d",
+            "aliasBody": "echo git difftool origin/main --diff-filter=D $* | msr -XM --to-stderr --keep-color",
+            "description": "Launch GUI difftool (configured in git) to compare 'deleted files' of current branch with origin/main. Example: gda-d *.cpp"
+        },
+        {
+            "aliasName": "gdm-dl",
+            "aliasBody": "echo git diff origin/master --name-only --diff-filter=D $* | msr -XM --to-stderr --keep-color",
+            "description": "Show deleted file path list between current branch and origin/master."
+        },
+        {
+            "aliasName": "gda-dl",
+            "aliasBody": "echo git diff origin/main --name-only --diff-filter=D $* | msr -XM --to-stderr --keep-color",
+            "description": "Show deleted file path list between current branch and origin/main. Example: gda-dl  or  gda-dl *.cpp"
+        },
+        {
+            "aliasName": "git-ckm",
+            "aliasBody": "echo git checkout origin/master $* | msr -XM --to-stderr --keep-color",
+            "description": "Checkout origin/master branch to overwrite local files. Example: git-ckm local-path1,path2"
+        },
+        {
+            "aliasName": "git-cka",
+            "aliasBody": "echo git checkout origin/main $* | msr -XM --to-stderr --keep-color",
+            "description": "Checkout origin/main branch to overwrite local files. Example: git-cka local-path1,path2"
+        },
+        {
+            "aliasName": "git-ckc",
+            "aliasBody": "git branch | msr -t \"^\\s*\\*\\s*(\\S+).*\" -o \"git checkout origin/\\1 $*\" -PAC | msr -XM --to-stderr --keep-color",
+            "description": "Checkout origin/{current-brach} to overwrite local files. Example: git-ckc local-path1,path2"
+        },
+        {
+            "aliasName": "git-rm-other-branches",
+            "aliasBody": "git branch | msr -t \"^\\s*(\\w+\\S+)\" -o \"git branch -D \\1\" --nt \"^\\W*(main|master)\\s*$\" $*",
+            "description": "Remove all other branches except main/master. Example: git-rm-other-branches --nx another-need -H 3 -X"
+        },
+        {
+            "aliasName": "git-fetch-for-shallow-clone",
+            "aliasBody": "echo git fetch origin --prune | msr -XM && echo git reset --hard origin/$(git rev-parse --abbrev-ref HEAD) | msr -XM",
+            "description": "Fetch all branches and reset to current branch for shallow clone."
+        },
+        {
+            "aliasName": "git-fix-shallow-clone",
+            "aliasBody": "msr -XM -z \"git remote set-branches origin *\" && msr -XM -z \"git fetch --depth=1\"",
+            "description": "echo git fetch --unshallow && msr -XM -z \"git remote set-branches origin \\\"*\\\"\"  && msr -XM -z \"git fetch --depth=1 origin\""
+        },
+        {
+            "aliasName": "git-set-url",
+            "aliasBody": "msr -XM -z \"git remote set-url origin $1\"",
+            "description": "Set git remote origin url. Example: git-set-url https://xxx or git@xxx"
+        },
+        {
+            "aliasName": "git-tag-delete",
+            "aliasBody": "echo git tag --delete $1 | msr -XM && echo git push origin --delete $1 | msr -XM",
+            "description": "Delete a git tag. Example: git-tag-delete v1.0.0"
+        },
+        {
+            "aliasName": "git-tag-list",
+            "aliasBody": "echo git ls-remote --tags origin $* | msr -XM",
+            "description": "List git tags. Example: git-tag-list --sort=v:refname"
+        },
+        {
+            "aliasName": "decode-url",
+            "aliasBody": "pwsh -Command \"Add-Type -AssemblyName System.Web; [System.Web.HttpUtility]::UrlDecode(\\\"$*\\\");\"",
+            "description": "Decode URL encoded string. Example: decode-url \"https://xxx\""
+        },
+        {
+            "aliasName": "encode-url",
+            "aliasBody": "pwsh -Command \"Add-Type -AssemblyName System.Web; [System.Web.HttpUtility]::UrlEncode(\\\"$*\\\");\"",
+            "description": "Encode URL string. Example: encode-url \"https://xxx\""
+        },
+        {
+            "aliasName": "git-tag-push",
+            "aliasBody": "git rev-parse --abbrev-ref HEAD | msr -t \"(.+)\" -o \"git push origin :refs/tags/\\1\" -XM",
+            "description": "Push current tag to remote."
+        },
+        {
+            "aliasName": "git-reset-to",
+            "aliasBody": "git diff --name-only --diff-filter=M | msr -t \"(.+)\" -o \"git checkout HEAD -- \\1 && git restore --source=HEAD --staged --worktree \\1\" -X -V ne0 & echo  git diff --ignore-space-at-eol | msr -XM & git status -s",
+            "description": "Reset git repo to a commit. Example: git-reset HEAD~1"
+        },
+        {
+            "aliasName": "b64ec",
+            "aliasBody": "pwsh -Command \"[Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes(\\\"$*\\\"))\"",
+            "description": "Base64 encode a string. Example: b64ec \"Hello world 123\""
+        },
+        {
+            "aliasName": "sha512",
+            "aliasBody": "pwsh -Command \"[BitConverter]::ToString([Security.Cryptography.SHA512Managed]::Create().ComputeHash([System.Text.Encoding]::Unicode.GetBytes(\\\"$1\\\"))).Replace(\\\"-\\\",\\\"\\\")\"",
+            "description": "Get SHA512 hash value of a text (name/id/etc.) Example: sha512 \"Hello world 123\""
+        },
+        {
+            "aliasName": "sfw",
+            "aliasBody": "msr -l -W --unix-slash 0 -M -P -p $*",
+            "description": "Print full path of Windows slash for an input folder(or file). Example: sfw apps/tools will print c:\\apps\\tools\\{file} if app\\tools folder in is c:\\ folder."
+        },
+        {
+            "aliasName": "sfu",
+            "aliasBody": "msr -l --unix-slash 1 -M -P -p $*",
+            "description": "Print paths of UNIX slash for an input folder(or file). Example: sfu tools -W -f exe --sp .exe"
+        }
+    ],
+    "msr.bash.commonAliasNameBodyList": [
+        {
+            "aliasName": "sbc",
+            "aliasBody": "source ~/.bashrc",
+            "description": "Reload alias + env including vscode-msr alias. This alias will be auto copied to Remote SSH + Docker dev-containers."
+        },
+        {
+            "aliasName": "grep-alias",
+            "aliasBody": "msr -p ~/msr-cmd-alias.bashrc $*",
+            "description": "Search alias (bash) like: grep-alias -t grep-alias"
+        },
+        {
+            "aliasName": "get-mac",
+            "aliasBody": "ifconfig en0 | msr -it \"^\\s*ether\\s+(\\w+:\\w+:\\w+:\\S+)\" -PM"
+        },
+        {
+            "aliasName": "git-ssh-agent-init",
+            "aliasBody": "eval \"$(ssh-agent -s)\" && ssh-add ~/.ssh/id_rsa && which pbcopy && pbcopy < ~/.ssh/id_rsa.pub"
+        },
+        {
+            "aliasName": "format-clang-code-by-comparing-branch-or-commit",
+            "aliasBody": "which clang-format || msr -XM -z \"sudo apt install -y clang-format-10 && sudo ln -sf /usr/bin/clang-format-10 /usr/bin/clang-format\"; branch_or_commit=$1; [ $# -lt 1 ] && branch_or_commit=HEAD~1; git diff $branch_or_commit --name-only | msr -t \"(.+\\.(proto|[ch][cpx]*)$)\" -o \"clang-format -style=file -i \\1\" -X \"${@:2}\"",
+            "description": "Format code by comparing with a branch or commit. The arg is the branch or commit id. This alias will be auto copied to Remote SSH + Docker dev-containers."
+        },
+        {
+            "aliasName": "format-one-clang-code-file",
+            "aliasBody": "echo clang-format -style=file -i $* | msr -XM",
+            "description": "Format one code file by clang-format. Example: format-one-clang-code-file xxx/file.c"
+        },
+        {
+            "aliasName": "sc-list",
+            "aliasBody": "echo screen -ls | msr -XM",
+            "description": "List screen sessions on Linux server."
+        },
+        {
+            "aliasName": "sc-attach-or-create",
+            "aliasBody": "echo screen -R $*; screen -R $*",
+            "description": "Attach to a screen session or create a new one on Linux server."
+        },
+        {
+            "aliasName": "gdc",
+            "aliasBody": "git difftool origin/$(git rev-parse --abbrev-ref HEAD) $*",
+            "description": "Launch GUI tool to compare changes between {current-branch} and origin/{current-branch}. Example: gdc  or  gdc *.cpp"
+        },
+        {
+            "aliasName": "gdc-l",
+            "aliasBody": "git diff origin/$(git rev-parse --abbrev-ref HEAD) --name-only $*",
+            "description": "Show different file path list between {current-branch} and origin/{current-branch}. Example: gdc-l  or  gdc-l *.cpp"
+        },
+        {
+            "aliasName": "gdc-al",
+            "aliasBody": "git diff origin/$(git rev-parse --abbrev-ref HEAD) --name-only --diff-filter=A $*",
+            "description": "Show added new file path list between {current-branch} and origin/{current-branch}. Example: gdc-al  or  gdc-al *.cpp"
+        },
+        {
+            "aliasName": "gdc-ml",
+            "aliasBody": "git diff origin/$(git rev-parse --abbrev-ref HEAD) --name-only --diff-filter=M $*",
+            "description": "Show changed file path list between {current-branch} and origin/{current-branch}. Example: gdc-ml  or  gdc-ml *.cpp"
+        },
+        {
+            "aliasName": "gdc-dl",
+            "aliasBody": "git diff origin/$(git rev-parse --abbrev-ref HEAD) --name-only --diff-filter=D $*",
+            "description": "Show deleted file path list between {current-branch} and origin/{current-branch}. Example: gdc-dl  or  gdc-dl *.cpp"
+        }
+    ],
+    "msr.cmd.commonAliasNameBodyList": [
+        {
+            "aliasName": "to-args",
+            "aliasBody": "pwsh -Command \"Set-Clipboard $(Get-Clipboard | msr -t '\\s+' -o '\\n' -aPAC | msr -t '(.+)' -o '\\t\\t\\\"\\1\\\",' -aPAC).Replace('\\\"\\\"', '\\\"').Replace('\\', '\\\\'); Get-Clipboard; Write-Host -ForegroundColor Green 'Copied to clipboard, you can paste it in args[] in launch.json' in vscode;\"",
+            "description": "Convert command line to multi-line args[] for launch.json for debugging C++/Python/Java/etc. programs in VSCode."
+        },
+        {
+            "aliasName": "to-args1",
+            "aliasBody": "pwsh -Command \"Set-Clipboard $(Get-Clipboard | msr -t '\\s+' -o '\\n' -aPAC | msr -t '(.+)' -o ' \\\"\\1\\\",' -aPAC | msr -S -t '[\\r\\n]+\\s*' -o ' ' -aPAC).Replace('\\\"\\\"', '\\\"').Replace('\\', '\\\\').Replace('\\n', ' ').Replace('\\t', ' '); Get-Clipboard; Write-Host -ForegroundColor Green 'Copied to clipboard, you can paste it in args[] in launch.json in vscode';\"",
+            "description": "Convert command line to one-line args[] for launch.json for debugging C++/Python/Java/etc. programs in VSCode."
+        },
+        {
+            "aliasName": "update-vsc-alias",
+            "aliasBody": "echo python C:/opengit/msrTools/custom-alias/update_vscode_custom_alias_groups.py -r %APPDATA%/Code/User/settings.json -t $* | msr -XM",
+            "description": "Update other alias settings from your frequently used/tunned settings(%APPDATA%/Code/User/settings.json). \nExample-1: update-vsc-alias C:/opengit/msrTools/code/vs-conemu/vscode/settings.json \nExample-2: update-vsc-alias C:/opengit/msrTools/custom-alias/settings.json"
+        },
+        {
+            "aliasName": "falias",
+            "aliasBody": "msr -p %APPDATA%/Code/User/settings.json -b \"^\\W+msr.\\w*\\.?\\w+List\\W+$\" -Q \"^\\s*\\]\\W*$\" -PAC | msr -S -t \"(.+?),\\s*$\" -o \"{\\1}\" -aPAC | msr -S -t \",(?=\\s*[\\}\\]])\" -o \"\" -aPAC | jq -r \".\\\"msr.commonAliasNameBodyList\\\"[]?, .\\\"msr.bash.commonAliasNameBodyList\\\"[]?, .\\\"msr.cmd.commonAliasNameBodyList\\\"[]? | select(.aliasName == \\\"$1\\\" or (.aliasName | tostring | startswith(\\\"$1\\\"))) | \\\"aliasName = \\(.aliasName)\\naliasBody = \\(.aliasBody)\\ndescription = \\(.description)\\n\\\"\" | msr -aPA -e \"^(\\w+) = \" -t \"(?<=^aliasName = )$1\"",
+            "description": "Find custom alias by name prefix from %APPDATA%/Code/User/settings.json (need jq.exe) , then show aliasName + aliasBody + description(example). Example: falias update-vsc"
+        },
+        {
+            "aliasName": "fa",
+            "aliasBody": "PowerShell -ExecutionPolicy Bypass -Command \"$prefix='$1'; $isExactEqual = '$2' -imatch '^(1|true|y)'; $debug = '$3' -imatch 'debug'; if (-not $prefix) { Write-Host 'Please provide an alias prefix.' -ForegroundColor Red; exit 1; }; $settingsPath = Resolve-Path ([IO.Path]::Combine($env:APPDATA , 'Code/User/settings.json')); if (-not (Test-Path $settingsPath)){Write-Error ('Not found file: ' + $settingsPath); exit 1;} try { $settings = msr -p $settingsPath -b '^\\W+msr.\\w*\\.?\\w+List\\W+$' -Q '^\\s*\\]\\W*$' -PAC | msr -S -t '(.+?),\\s*$' -o '{\\1}' -aPAC | msr -S -t ',(?=\\s*[\\}\\]])' -o ' ' -aPAC | ConvertFrom-Json; } catch { Write-Error ('Cannot parse file: ' + $_); exit 1; } $keyGroupList = @('msr.commonAliasNameBodyList','msr.bash.commonAliasNameBodyList','msr.cmd.commonAliasNameBodyList'); $matchedGroups = @(); $matchedAliasCount = 0; $allAliasCount = 0; $allGroupCount = 0; foreach ($keyGroup in $keyGroupList) { $aliasList = $settings.PSObject.Properties[$keyGroup].Value; if (-not $aliasList) { continue; }; $matchedAliasList = @(); foreach ($alias in $aliasList) { if (($isExactEqual -and $alias.aliasName.Equals($prefix)) -or (-not $isExactEqual -and $alias.aliasName.StartsWith($prefix))) { $matchedAliasList += $alias; } elseif ($debug) { Write-Host ('Skip unmatched alias: ' + $alias.aliasName + ' in group: ' + $keyGroup) -ForegroundColor Yellow;} }; $allAliasCount += $aliasList.Count; $allGroupCount += 1; if ($matchedAliasList -and $matchedAliasList.Count -gt 0) { $matchedGroups += $keyGroup; $matchedAliasCount += $matchedAliasList.Count; Write-Host $keyGroup -ForegroundColor Magenta -NoNewline; Write-Host (' matched ' + $matchedAliasList.Count + ' aliases from ' + $aliasList.Count + ' aliases:' ); foreach($item in $matchedAliasList) { Write-Host 'aliasName = ' -NoNewline;  Write-Host $item.aliasName -ForegroundColor Green;  Write-Host 'aliasBody = ' -NoNewline; Write-Host $item.aliasBody -ForegroundColor Cyan; Write-Host 'description = ' -NoNewline;  Write-Host $item.description; Write-Host ''; }}} if ($matchedGroups.Count -eq 0) { Write-Host ('Not found alias which name starts with ' + $prefix + ' from ' + $allAliasCount + ' aliases in ' + $allGroupCount + ' groups in ' + $settingsPath ) -ForegroundColor Red;} else { Write-Host ('Found ' + $matchedAliasCount + ' aliases in ' + $matchedGroups.Count + ' groups from ' + $allAliasCount + ' aliases in ' + $allGroupCount + ' groups: ') -NoNewline; Write-Host ([string]::Join(' + ', $matchedGroups)) -ForegroundColor Magenta -NoNewline; Write-Host (' from ' + $settingsPath); }\"",
+            "description": "Find custom alias by name or prefix from %APPDATA%/Code/User/settings.json (by PowerShell only). Example: fa grep-vsc"
+        },
+        {
+            "aliasName": "setup-ps",
+            "aliasBody": "echo Must run as Admin & echo PowerShell Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser | msr -XM",
+            "description": "Let PowerShell be executable on machine (you can also use 'PowerShell Set-ExecutionPolicy Unrestricted -Scope LocalMachine -Force'). Example: init-ps"
+        },
+        {
+            "aliasName": "import-vsc-alias",
+            "aliasBody": "echo python C:/opengit/msrTools/custom-alias/update_vscode_custom_alias_groups.py -t %APPDATA%/Code/User/settings.json -r $* | msr -XM",
+            "description": "Update your settings(%APPDATA%/Code/User/settings.json) from other file.\nExample-1: import-vsc-alias C:/opengit/msrTools/code/vs-conemu/vscode/settings.json \nExample-2: import-vsc-alias C:/opengit/msrTools/custom-alias/settings.json"
+        },
+        {
+            "aliasName": "grep-alias",
+            "aliasBody": "msr -p %USERPROFILE%\\msr-cmd-alias.doskeys $*",
+            "description": "Search alias (Windows doskeys) like: grep-alias -t grep-alias"
+        },
+        {
+            "aliasName": "grep-vsc",
+            "aliasBody": "msr -p %APPDATA%/Code/User/settings.json $*",
+            "description": "Search alias (Windows doskeys) in vscode settings.json like: grep-vsc -t grep-alias -D 2"
+        },
+        {
+            "aliasName": "rm-alias",
+            "aliasBody": "msr -p %USERPROFILE%/msr-cmd-alias.doskeys -t \"^$1=.*\" -o \"\" -R -M -T 0 & where $1.cmd | msr -t \"(.+)\" -o \"del /f \\1\" -XM",
+            "description": "Remove alias(doskeys) by name + delete its script file if has dumped."
+        },
+        {
+            "aliasName": "to-alias-body0",
+            "aliasBody": "to-alias-body & PowerShell -Command \"$a = Get-Clipboard; $a = $a.Substring(1, $a.Length -2); Set-Clipboard $a; Write-Host -ForegroundColor Magenta ('Removed quotes (text length = ' + $a.Length + ') for above text and reset it to clipboard, you can directly paste.')\"",
+            "description": "Call to-alias-body (dumped/from by vscode-msr) to remove leading and trailing double quotes from clipboard content."
+        },
+        {
+            "aliasName": "to-clip",
+            "aliasBody": "PowerShell -Command \"Set-Clipboard (Get-Content '$1' -Raw); Write-Host ('Read ' + $(Get-Clipboard).Length + ' bytes to clipboard from file: $1');\"",
+            "description": "Use PowerShell to read a file content to clipboard. Example: to-clip %TMP%/large-text.log"
+        },
+        {
+            "aliasName": "sclip",
+            "aliasBody": "PowerShell -Command \"Get-Clipboard $*\"",
+            "description": "Show clipboard content."
+        },
+        {
+            "aliasName": "git-root",
+            "aliasBody": "for /f \"tokens=*\" %a in ('git rev-parse --show-toplevel ^| msr -x / -o \\ -aPAC') do @if not \"%CD%\" == \"%a\" pushd \"%a\"",
+            "description": "Change folder to git repository root directory."
+        },
+        {
+            "aliasName": "git-list-mb",
+            "aliasBody": "PowerShell -Command \"$v1 = [DateTime]::Now; $names = if ('$1' -imatch 'new|1') { git ls-remote --heads origin $('refs/heads/*/' + $env:USERNAME + '/*') | ForEach-Object { $_.Split()[1].Replace('refs/heads/', '').Trim() } } else { git branch -r | Where-Object { $_ -match $('origin/(\\S+/)?' + $env:USERNAME + '/') } | ForEach-Object { $_.Trim(); } }; $names; Write-Host -ForegroundColor Green ('Found ' + $names.Count + ' branches, cost ' + ([DateTime]::Now - $v1).TotalSeconds.ToString('F2') + ' seconds.'); \"",
+            "description": "List my remote branches, input 'new' to fetch remote branches. Example: git-list-mb 1  or  git-list-mb new  or  git-list-mb"
+        },
+        {
+            "aliasName": "git-fb",
+            "aliasBody": "PowerShell -Command \"& {param([Parameter(Mandatory=1)][string]$DaysBack, [Parameter(Mandatory=1)][string]$MatchBranchPattern, $ExcludeBranchPattern='No-Exclude'); $SkipOldTime = (Get-Date).AddDays(-$DaysBack); $commands = @(); Write-Host 'Run this first if you need fetch branches: git fetch origin --unshallow' -ForegroundColor Green; $nameOfBranches = git branch -r | Where-Object { $_ -match $MatchBranchPattern -and $_ -notmatch $ExcludeBranchPattern } | ForEach-Object { $_.Trim() };  foreach ($name in $nameOfBranches) { $commitTimeText = git log -n 1 --pretty=format:%cd $name; $commitTime = [DateTime]::Parse($commitTimeText);  if ($commitTime -gt $SkipOldTime) { $commands += \\\"git log -n 2 $name ^| msr -aPA -H 20 -e Date.+ --exit 0\\\"; } } $commands | msr -XMI } \" $*",
+            "description": "Find remote git branches by Date + basename prefix (Seems variable names cannot starts with 'b' like '$branchName' in PowerShell alias). Example: git-fb 8 mike/ , git-fb 8 title.*words"
+        },
+        {
+            "aliasName": "gdc",
+            "aliasBody": "for /f \"tokens=*\" %a in ('git rev-parse --abbrev-ref HEAD') do @echo git difftool origin/%a $* | msr -XM --keep-color",
+            "description": "Launch GUI tool to compare changes between {current-branch} and origin/{current-branch}. Example: gdc  or  gdc *.cpp"
+        },
+        {
+            "aliasName": "gdc-l",
+            "aliasBody": "for /f \"tokens=*\" %a in ('git rev-parse --abbrev-ref HEAD') do @echo git diff origin/%a --name-only $* | msr -XM --keep-color",
+            "description": "Show different file path list between {current-branch} and origin/{current-branch}. Example: gdc-l  or  gdc-l *.cpp"
+        },
+        {
+            "aliasName": "gdc-al",
+            "aliasBody": "for /f \"tokens=*\" %a in ('git rev-parse --abbrev-ref HEAD') do @echo git diff origin/%a --name-only --diff-filter=A $* | msr -XM --keep-color",
+            "description": "Show added new file path list between {current-branch} and origin/{current-branch}. Example: gdc-al  or  gdc-al *.cpp"
+        },
+        {
+            "aliasName": "gdc-ml",
+            "aliasBody": "for /f \"tokens=*\" %a in ('git rev-parse --abbrev-ref HEAD') do @echo git diff origin/%a --name-only --diff-filter=M $* | msr -XM --keep-color",
+            "description": "Show changed file path list between {current-branch} and origin/{current-branch}. Example: gdc-ml  or  gdc-ml *.cpp"
+        },
+        {
+            "aliasName": "gdc-dl",
+            "aliasBody": "for /f \"tokens=*\" %a in ('git rev-parse --abbrev-ref HEAD') do @echo git diff origin/%a --name-only --diff-filter=D $* | msr -XM --keep-color",
+            "description": "Show deleted file path list between {current-branch} and origin/{current-branch}. Example: gdc-dl  or  gdc-dl *.cpp"
+        },
+        {
+            "aliasName": "grant-perm",
+            "aliasBody": "echo icacls $1 /grant %USERNAME%:(OI)(CI)F /T /C /Q | msr -XM",
+            "description": "Grant full control permission to a file or folder. Example: grant-perm %USERPROFILE%\\Downloads"
+        },
+        {
+            "aliasName": "import-cert",
+            "aliasBody": "PowerShell -Command \"if ('$1'.ToLower().EndsWith('.pfx')) { Import-PfxCertificate -FilePath '$1' -CertStoreLocation 'Cert:\\LocalMachine\\My' -Password (ConvertTo-SecureString -String [string]::Empty -Force -AsPlainText) } elseif ('$1'.ToLower().EndsWith('.cer')) { Import-Certificate -FilePath '$1' -CertStoreLocation 'Cert:\\LocalMachine\\My' } else { Write-Warning ('Unknown cert type: ' + '$1') }\"",
+            "description": "Import certificate to local machine (must run as Admin) without password. Example: import-cert %USERPROFILE%\\Downloads\\test.pfx"
+        },
+        {
+            "aliasName": "list-cert",
+            "aliasBody": "PowerShell -Command \"Get-ChildItem -Path Cert:\\LocalMachine\\My | Sort-Object NotAfter | ForEach-Object { [PSCustomObject]@{ Thumbprint = $_.Thumbprint; NotAfter = $_.NotAfter.ToString('yyyy-MM-dd HH:mm:ss zzz'); Subject = $_.Subject; Issuer = $_.Issuer } } | Format-Table -AutoSize\"",
+            "description": "List certificates in local machine."
+        },
+        {
+            "aliasName": "show-cert",
+            "aliasBody": "PowerShell -Command \"$cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2; $cert.Import('$1'); [PSCustomObject]@{ Thumbprint = $cert.Thumbprint; NotAfter = $cert.NotAfter.ToString('yyyy-MM-dd HH:mm:ss zzz'); NotBefore = $cert.NotBefore.ToString('yyyy-MM-dd HH:mm:ss zzz'); Subject = $cert.Subject; Issuer = $cert.Issuer } | Format-Table -AutoSize\"",
+            "description": "Show certificate file info. Example: show-cert %USERPROFILE%\\Downloads\\test.pfx"
+        },
+        {
+            "aliasName": "find-port",
+            "aliasBody": "msr -XM -z \"netstat -ano | msr -MP -ix :$* -e \\d+$ --colors e=Green_Blue\" --to-stderr --keep-color"
+        },
+        {
+            "aliasName": "utime-now",
+            "aliasBody": "PowerShell -Command \"$a=\\\"$1\\\"; if (-not $a) { $a = '';} $v = $a -replace '(?<=\\d+)\\D.*', ''; if ([string]::IsNullOrWhiteSpace($a)) {[DateTimeOffset]::Now.ToUnixTimeSeconds()} elseif ($a -imatch 'y') { [DateTimeOffset]::Now.AddYears($v).ToUnixTimeSeconds(); } elseif ($a -imatch 'mo') { [DateTimeOffset]::Now.AddMonths($v).ToUnixTimeSeconds(); } elseif ($a -imatch 'd') { [DateTimeOffset]::Now.AddDays($v).ToUnixTimeSeconds(); } elseif ($a -imatch 'h') { [DateTimeOffset]::Now.AddHours($v).ToUnixTimeSeconds(); } elseif ($a -imatch 'mi?') { [DateTimeOffset]::Now.AddMinutes($v).ToUnixTimeSeconds(); } else { [DateTimeOffset]::Now.AddSeconds($v).ToUnixTimeSeconds(); }\"",
+            "description": "Get Unix timestamp in seconds for now or future. Example: utime-now , utime-now 3600 , utime-now -3600"
+        },
+        {
+            "aliasName": "to-utime",
+            "aliasBody": "PowerShell -Command \"$datetime = [datetime]::Parse('$*'); [int][double]::Parse((Get-Date $datetime -UFormat %s))\"",
+            "description": "Convert DateTime to Unix timestamp in seconds."
+        },
+        {
+            "aliasName": "utime-to-utc",
+            "aliasBody": "PowerShell -Command \"[System.DateTimeOffset]::FromUnixTimeSeconds('$*').ToLocalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')\"",
+            "description": "Convert Unix timestamp in seconds to DateTime."
+        },
+        {
+            "aliasName": "utime-to-local",
+            "aliasBody": "PowerShell -Command \"[System.DateTimeOffset]::FromUnixTimeSeconds('$*').UtcDateTime.ToString('yyyy-MM-ddTHH:mm:ss zzz')\"",
+            "description": "Convert Unix timestamp in seconds to DateTime."
+        },
+        {
+            "aliasName": "list-download",
+            "aliasBody": "msr -l --wt --sz -p %USERPROFILE%\\Downloads --unix-slash 0 --colors m=None $*",
+            "description": "List files in Downloads folder, sort by modified time, use Windows slash (avoid UNIX slash in vscode terminal)."
+        },
+        {
+            "aliasName": "get-eip",
+            "aliasBody": "PowerShell -Command \"$ip = (Invoke-WebRequest ifconfig.me/ip).Content.Trim() | Select-String -NotMatch IPv6; $ip; Set-Clipboard $ip; Write-Host 'Already copied to clipboard' -ForegroundColor Green\"",
+            "description": "Get external IP address and copy it to clipboard."
+        },
+        {
+            "aliasName": "edit-hosts",
+            "aliasBody": "PowerShell -Command \"Start-Process notepad -ArgumentList 'C:\\Windows\\System32\\drivers\\etc\\hosts' -Verb runAs\"",
+            "description": "Edit hosts file as administrator on Windows."
+        },
+        {
+            "aliasName": "restart-wifi",
+            "aliasBody": "PowerShell -Command \"Restart-NetAdapter -Name Wi-Fi -Confirm:$false; return; Disable-NetAdapter -Name Wi-Fi -Confirm:$false; Start-Sleep -Second 3; Enable-NetAdapter -Name Wi-Fi -Confirm:$false\""
+        },
+        {
+            "aliasName": "del-user-env",
+            "aliasBody": "PowerShell -Command \"[System.Environment]::SetEnvironmentVariable(\\\"$1\\\", $null, [System.EnvironmentVariableTarget]::User)\" && reset-env",
+            "description": "Delete user environment variable. Example: del-user-env EnvName"
+        },
+        {
+            "aliasName": "add-user-env",
+            "aliasBody": "PowerShell -Command \"[System.Environment]::SetEnvironmentVariable(\\\"$1\\\", \\\"$2\\\", [System.EnvironmentVariableTarget]::User)\" && reload-env",
+            "description": "Add user environment variable. Example: add-user-env EnvName EnvValue"
+        }
+    ]
+}
