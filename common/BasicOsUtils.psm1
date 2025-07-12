@@ -521,9 +521,15 @@ function Install-AppIfNotFound {
     }
 }
 
-$_SourceMsrHomeUrlArray = @(
+$_SourceExeUrlArray = @(
     'https://raw.githubusercontent.com/qualiu/msr/master/tools/'
     'https://gitlab.com/lqm678/msr/-/raw/master/tools/'
+    'https://master.dl.sourceforge.net/project/avasattva/'
+)
+
+$_SourceScriptUrlArray = @(
+    'https://raw.githubusercontent.com/qualiu/msrTools/master/'
+    'https://gitlab.com/lqm678/msrTools/-/raw/master/'
     'https://master.dl.sourceforge.net/project/avasattva/'
 )
 
@@ -533,8 +539,9 @@ function Get-MsrDownloadUrl {
         [int] $UseUrlIndex = 0
     )
 
-    $UseUrlIndex = $UseUrlIndex % $_SourceMsrHomeUrlArray.Count
-    $parentUrl = $_SourceMsrHomeUrlArray[$UseUrlIndex]
+    $sourceUrlArray = if ($SourceExeName -imatch '^(msr|nin)') { $_SourceExeUrlArray } else { $_SourceScriptUrlArray }
+    $UseUrlIndex = $UseUrlIndex % $sourceUrlArray.Count
+    $parentUrl = $sourceUrlArray[$UseUrlIndex]
     if ($parentUrl.Contains('sourceforge')) {
         return $parentUrl + $SourceExeName + '?viasf=1'
     }
@@ -580,7 +587,8 @@ function Get-MsrToolByName {
         "-$($machineArch).$($kernelName)".ToLower()
     }
 
-    for ($urlIndex = 0; $urlIndex -lt $_SourceMsrHomeUrlArray.Count; $urlIndex += 1) {
+    $sourceUrlArray = if ($Name -imatch '^(msr|nin)') { $_SourceExeUrlArray } else { $_SourceScriptUrlArray }
+    for ($urlIndex = 0; $urlIndex -lt $sourceUrlArray.Count; $urlIndex += 1) {
         $sourceExeName = $Name + $suffix
         $downloadUrl = Get-MsrDownloadUrl $sourceExeName $urlIndex
         try {
@@ -590,7 +598,7 @@ function Get-MsrToolByName {
         }
         catch {
             Write-Warning $_
-            if ($($urlIndex + 1) -lt $_SourceMsrHomeUrlArray.Count) {
+            if ($($urlIndex + 1) -lt $sourceUrlArray.Count) {
                 Write-Warning "Will try to download $($Name) from next source ..."
             }
         }
@@ -602,6 +610,7 @@ Get-MsrToolByName 'nin'
 if ($IsWindowsOS) {
     Get-MsrToolByName 'psall.bat'
     Get-MsrToolByName 'pskill.bat'
+    Get-MsrToolByName 'PsTool.ps1'
 }
 
 msr -h -C | msr -t "keep-color" -H 0 -M

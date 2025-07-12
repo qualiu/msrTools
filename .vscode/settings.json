@@ -73,6 +73,7 @@
         "Singleline",
         "spotfront",
         "startswith",
+        "taskkill",
         "tolower",
         "toplevel",
         "unshallow",
