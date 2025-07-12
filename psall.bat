@@ -27,11 +27,6 @@ msr -z "LostArg%~1" -t "^LostArg(|-h|--help|/\?)$" > nul || (
     exit /b 0
 )
 
-:: wmic process get ParentProcessId,ProcessId,Name,CommandLine /FORMAT:csv | msr -it "^(Node|%COMPUTERNAME%)," -o "" -aPAC | msr -t "(.+)?,(.*?),(\d+),(\d+)$" -o "\3 \4 \2 \1" -aPAC
-set Command1=wmic process get ParentProcessId,ProcessId,Name,CommandLine /FORMAT:csv
-set Command2=msr -it "^(Node|%COMPUTERNAME%)," -o "" -aPAC
-set Command3=msr -t "(CommandLine|.*)?,(Name|.*?),(ParentProcessId|\d+),(ProcessId|\d+)$" -o "\3\t\4\t\2\t\1" -aPAC
-
 :: Test args for msr.exe
 msr -z justTestArgs %* >nul 2>nul
 if %ERRORLEVEL% LSS 0 (
@@ -39,6 +34,39 @@ if %ERRORLEVEL% LSS 0 (
     msr -z justTestArgs %*
     exit /b -1
 )
+
+where wmic >nul 2>nul
+:: Use '%~dp0PsTool.ps1' if not found wmic in latest Windows 11
+if !ERRORLEVEL! NEQ 0 (
+    for /f "tokens=*" %%a in ("%~dp0\PsTool.ps1") do set PsToolPath=%%~dpa%%~nxa
+    :: Parse msr arguments for PsTool.ps1
+    set "ProcessToolArgs=-Action Find"
+    for /f "tokens=1,*" %%a in ('msr -z justTestArgs %* --verbose 2^>^&1 ^| msr -t "^[\s-]+(has-text|text-match|ignore-case|nx|nt|colors) = (.+)" -o "\1\t\2" -PAC') do (
+        set "name=%%a"
+        set "value=%%b"
+        if "!name!" == "has-text" set "ProcessToolArgs=!ProcessToolArgs! -CommandLine '!value!'"
+        if "!name!" == "text-match" set "ProcessToolArgs=!ProcessToolArgs! -CommandLinePattern '!value!'"
+        if "!name!" == "nx" set "ProcessToolArgs=!ProcessToolArgs! -ExcludeCommandLine '!value!'"
+        if "!name!" == "nt" set "ProcessToolArgs=!ProcessToolArgs! -ExcludeCommandLinePattern '!value!'"
+        if "!name!" == "ignore-case" set "ProcessToolArgs=!ProcessToolArgs! -IgnoreCase !value!"
+        if "!name!" == "colors" set "ColorsArg=!value!"
+    )
+
+    if "!ColorsArg!" == "" ( set "ColorsArg=--colors u=Yellow,m=Green" ) else ( set "ColorsArg=" )
+    where pwsh.exe >nul 2>nul
+    if !ERRORLEVEL! EQU 0 (
+        pwsh.exe -Command "& '!PsToolPath!' !ProcessToolArgs!" | msr %* !ColorsArg!
+    ) else (
+        PowerShell -Command "& '!PsToolPath!' !ProcessToolArgs!" | msr %* !ColorsArg!
+    )
+
+    exit /b !ERRORLEVEL!
+)
+
+:: wmic process get ParentProcessId,ProcessId,Name,CommandLine /FORMAT:csv | msr -it "^(Node|%COMPUTERNAME%)," -o "" -aPAC | msr -t "(.+)?,(.*?),(\d+),(\d+)$" -o "\3 \4 \2 \1" -aPAC
+set Command1=wmic process get ParentProcessId,ProcessId,Name,CommandLine /FORMAT:csv
+set Command2=msr -it "^(Node|%COMPUTERNAME%)," -o "" -aPAC
+set Command3=msr -t "(CommandLine|.*)?,(Name|.*?),(ParentProcessId|\d+),(ProcessId|\d+)$" -o "\3\t\4\t\2\t\1" -aPAC
 
 for /f "tokens=*" %%a in ('echo %* ^| msr -t "^(\d+[\s\d]*)\s*(.*)" -o "\1" -PAC ^| msr -t "\s+(\d+)" -o "|\1" -aPAC ^| msr -t "\s*$" -o "" -aPAC') do (
     set "PidPattern=%%a"

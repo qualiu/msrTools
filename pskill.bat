@@ -49,18 +49,36 @@ call psall.bat %* !NoPathToPsAll! -c Before killing processes %~nx0 calls psall.
 
 if !ERRORLEVEL! LSS 1 exit /b !ERRORLEVEL!
 
-set pids=
+where taskkill.exe >nul 2>nul
+if !ERRORLEVEL! EQU 0 ( set /a HasTaskKill=1 ) else ( set /a HasTaskKill=0 )
+
+set PIDs=
 if "!NotAllNumbersAsPIDs!" == "true" (
-    for /f "tokens=*" %%a in ('call psall.bat %* !NoPathToPsAll! !NoInfoToPsAll! ^| msr -t "^\d+\t(\d+).*" -o "/pid \1" -PAC ^| msr -S -t "\s+" -o " " -PAC') do set pids=%%a
+    if !HasTaskKill! EQU 1 (
+        for /f "tokens=*" %%a in ('call psall.bat %* !NoPathToPsAll! !NoInfoToPsAll! ^| msr -t "^\d+\t(\d+).*" -o "/pid \1" -PAC ^| msr -S -t "\s+" -o " " -aPAC') do set PIDs=%%a
+    ) else (
+        for /f "tokens=*" %%a in ('call psall.bat %* !NoPathToPsAll! !NoInfoToPsAll! ^| msr -t "^\d+\t(\d+).*" -o " \1" -PAC ^| msr -S -t "\s+" -o "," -aPAC') do set PIDs=%%a
+    )
 ) else (
-    for /f "tokens=*" %%a in ('echo %* ^| msr -t "\s*(\d+)\s*" -o " /pid $1" -PAC') do set pids=%%a
+    if !HasTaskKill! EQU 1 (
+        for /f "tokens=*" %%a in ('echo %* ^| msr -t "\s+(\d+)" -o " /pid $1" -aPAC') do set PIDs=%%a
+    ) else (
+        for /f "tokens=*" %%a in ('echo %* ^| msr -t "\s+(\d+)" -o ",$1" -aPAC') do set PIDs=%%a
+    )
 )
 
 :: Only call taskkill if has PID - numbers
-:: echo !pids! | msr -t "\d+" >nul || taskkill /f !pids!
-echo !pids! | msr -t "\d+" >nul
-if !ERRORLEVEL! GTR 0 (
-   taskkill /f !pids!
+echo !PIDs! | msr -t "\d+" >nul
+if !ERRORLEVEL! EQU 0 exit /b 0
+if !HasTaskKill! EQU 1 (
+    @REM echo taskkill /f !PIDs!
+    taskkill /f !PIDs!
 ) else (
-   rem echo %date% %time%: %~nx0 Not found processes. Args = %* ,  PIDs = !pids! | msr -aPA -x "Not found" -e %~nx0 -t "Args = .*(?=PID)"
+    @REM echo PowerShell -Command "Stop-Process -Id !PowerShellPIDs! -Force -ErrorAction SilentlyContinue"
+    where pwsh.exe >nul 2>nul
+    if !ERRORLEVEL! EQU 0 (
+        pwsh.exe -Command "Stop-Process -Id !PowerShellPIDs! -Force -ErrorAction SilentlyContinue"
+    ) else (
+        PowerShell -Command "Stop-Process -Id !PowerShellPIDs! -Force -ErrorAction SilentlyContinue"
+    )
 )
