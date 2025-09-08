@@ -530,10 +530,10 @@ function Test-ProcessAllFieldsMatch {
         (-not [string]::IsNullOrEmpty($Process.CommandLine) -and $Regex.IsMatch($Process.CommandLine))
     }
     elseif (-not [string]::IsNullOrEmpty($Text)) {
-        $hasMatch = ($processIdStr.Contains($Text, $ComparisonType)) -or
-        ($parentProcessIdStr.Contains($Text, $ComparisonType)) -or
-        (-not [string]::IsNullOrEmpty($Process.Name) -and $Process.Name.Contains($Text, $ComparisonType)) -or
-        (-not [string]::IsNullOrEmpty($Process.CommandLine) -and $Process.CommandLine.Contains($Text, $ComparisonType))
+        $hasMatch = ($processIdStr.IndexOf($Text, $ComparisonType) -ge 0) -or
+        ($parentProcessIdStr.IndexOf($Text, $ComparisonType) -ge 0) -or
+        (-not [string]::IsNullOrEmpty($Process.Name) -and $Process.Name.IndexOf($Text, $ComparisonType) -ge 0) -or
+        (-not [string]::IsNullOrEmpty($Process.CommandLine) -and $Process.CommandLine.IndexOf($Text, $ComparisonType) -ge 0)
     }
 
     # Return result based on whether this is an exclusion or inclusion filter
@@ -559,7 +559,7 @@ function Get-MatchedProcesses {
         if (-not [string]::IsNullOrEmpty($ProcessName)) {
             $processes = $processes | Where-Object {
                 -not [string]::IsNullOrEmpty($_.Name) -and (
-                    $_.Name.Contains($ProcessName, $ComparisonType)
+                    $_.Name.IndexOf($ProcessName, $ComparisonType) -ge 0
                 )
             }
         }
@@ -568,7 +568,7 @@ function Get-MatchedProcesses {
         if (-not [string]::IsNullOrEmpty($CommandLine)) {
             $processes = $processes | Where-Object {
                 -not [string]::IsNullOrEmpty($_.CommandLine) -and (
-                    $_.CommandLine.Contains($CommandLine, $ComparisonType)
+                    $_.CommandLine.IndexOf($CommandLine, $ComparisonType) -ge 0
                 )
             }
         }
@@ -605,14 +605,14 @@ function Get-MatchedProcesses {
         # Exclude by plain process name (case-sensitive or case-insensitive based on IgnoreCaseBool parameter)
         if (-not [string]::IsNullOrEmpty($ExcludeProcessName)) {
             $processes = $processes | Where-Object {
-                [string]::IsNullOrEmpty($_.Name) -or -not ($_.Name.Contains($ExcludeProcessName, $ComparisonType))
+                [string]::IsNullOrEmpty($_.Name) -or -not ($_.Name.IndexOf($ExcludeProcessName, $ComparisonType) -ge 0)
             }
         }
 
         # Exclude by plain command line text (case-sensitive or case-insensitive based on IgnoreCaseBool parameter)
         if (-not [string]::IsNullOrEmpty($ExcludeCommandLine)) {
             $processes = $processes | Where-Object {
-                [string]::IsNullOrEmpty($_.CommandLine) -or -not ($_.CommandLine.Contains($ExcludeCommandLine, $ComparisonType))
+                [string]::IsNullOrEmpty($_.CommandLine) -or -not ($_.CommandLine.IndexOf($ExcludeCommandLine, $ComparisonType) -ge 0)
             }
         }
 
