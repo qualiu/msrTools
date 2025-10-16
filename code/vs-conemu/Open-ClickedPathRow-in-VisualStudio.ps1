@@ -80,6 +80,90 @@ function Get-ActiveVisualStudioInstance {
     return $null
 }
 
+function Get-AvailableVisualStudioProgIDs {
+    # Dynamically discover available Visual Studio COM ProgIDs by checking registry
+    $progIds = @()
+
+    # Add generic version first
+    $progIds += "VisualStudio.DTE"
+
+    # Check registry for installed Visual Studio versions
+    $registryPaths = @(
+        "HKLM:\SOFTWARE\Classes\VisualStudio.DTE.*",
+        "HKLM:\SOFTWARE\WOW6432Node\Classes\VisualStudio.DTE.*"
+    )
+
+    foreach ($registryPath in $registryPaths) {
+        try {
+            $keys = Get-ChildItem -Path ($registryPath -replace '\.\*$', '') -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match 'VisualStudio\.DTE\.\d+\.\d+$' }
+
+            foreach ($key in $keys) {
+                $progId = Split-Path $key.Name -Leaf
+                if ($progId -match '^VisualStudio\.DTE\.\d+\.\d+$' -and $progIds -notcontains $progId) {
+                    $progIds += $progId
+                }
+            }
+        }
+        catch {
+            # Registry access might fail, continue silently
+        }
+    }
+
+    # Add some common versions as fallback (in case registry detection fails)
+    $fallbackProgIds = @(
+        "VisualStudio.DTE.17.0",  # VS 2022
+        "VisualStudio.DTE.16.0",  # VS 2019
+        "VisualStudio.DTE.15.0",  # VS 2017
+        "VisualStudio.DTE.14.0",  # VS 2015
+        "VisualStudio.DTE.12.0",  # VS 2013
+        "VisualStudio.DTE.11.0",  # VS 2012
+        "VisualStudio.DTE.10.0"   # VS 2010
+    )
+
+    foreach ($fallbackProgId in $fallbackProgIds) {
+        if ($progIds -notcontains $fallbackProgId) {
+            $progIds += $fallbackProgId
+        }
+    }
+
+    # Sort by version number (descending) - newer versions first
+    $sortedProgIds = $progIds | Where-Object { $_ -match '\d+\.\d+$' } |
+    Sort-Object {
+        if ($_ -match '(\d+)\.(\d+)$') {
+            [int]$matches[1] * 100 + [int]$matches[2]
+        }
+        else { 0 }
+    } -Descending
+
+    # Add generic version at the end
+    $genericProgId = $progIds | Where-Object { $_ -eq "VisualStudio.DTE" }
+
+    return $sortedProgIds + $genericProgId
+}
+
+function Get-VisualStudioDTE {
+    # Dynamically get available Visual Studio COM ProgIDs
+    $progIds = Get-AvailableVisualStudioProgIDs
+
+    Write-Host "Detected Visual Studio COM ProgIDs: $($progIds -join ', ')" -ForegroundColor Cyan
+
+    foreach ($progId in $progIds) {
+        try {
+            Write-Host "Attempting to connect to $progId ..." -ForegroundColor Yellow
+            $dte = [Runtime.InteropServices.Marshal]::GetActiveObject($progId)
+            if ($dte) {
+                Write-Host "Successfully connected to $progId" -ForegroundColor Green
+                return $dte
+            }
+        }
+        catch {
+            Write-Host "Cannot connect to $progId : $($_.Exception.Message)" -ForegroundColor Red
+        }
+    }
+    return $null
+}
+
 function Select-FileRowColumnInVisualStudio {
     param (
         [string] $FilePath,
@@ -87,20 +171,41 @@ function Select-FileRowColumnInVisualStudio {
         [int] $ColumnNumber
     )
 
+    # Check if Visual Studio is running
     $vsInstance = Get-ActiveVisualStudioInstance
     if (-not $vsInstance) {
+        Write-Host "No running Visual Studio instance found. Please start Visual Studio first." -ForegroundColor Red
         return
     }
-    $dte = [Runtime.InteropServices.Marshal]::GetActiveObject("VisualStudio.DTE")
-    $dte.MainWindow.Activate()
-    [void] $dte.ItemOperations.OpenFile($FilePath)
-    $dte.ExecuteCommand("View.TrackActivityInSolutionExplorer")
-    $selection = $dte.ActiveDocument.Selection
-    if ($LineNumber -gt 1 -and $selection) {
-        $selection.GotoLine($LineNumber, $true)
-        if ($ColumnNumber -gt 0) {
-            $selection.MoveToLineAndOffset($LineNumber, $ColumnNumber)
+
+    # Try to get DTE object
+    $dte = Get-VisualStudioDTE
+    if (-not $dte) {
+        Write-Host "Cannot connect to Visual Studio via COM interface." -ForegroundColor Red
+        Write-Host "Possible solutions:" -ForegroundColor Yellow
+        Write-Host "1. Ensure Visual Studio is fully loaded (not just starting up)" -ForegroundColor White
+        Write-Host "2. Run this script as Administrator" -ForegroundColor White
+        Write-Host "3. Restart Visual Studio and wait for it to fully load" -ForegroundColor White
+        Write-Host "4. Check if any Visual Studio COM ProgIDs were detected above" -ForegroundColor White
+        return
+    }
+
+    try {
+        $dte.MainWindow.Activate()
+        [void] $dte.ItemOperations.OpenFile($FilePath)
+        $dte.ExecuteCommand("View.TrackActivityInSolutionExplorer")
+        $selection = $dte.ActiveDocument.Selection
+        if ($LineNumber -gt 1 -and $selection) {
+            $selection.GotoLine($LineNumber, $true)
+            if ($ColumnNumber -gt 0) {
+                $selection.MoveToLineAndOffset($LineNumber, $ColumnNumber)
+            }
         }
+        Write-Host "File opened in Visual Studio and navigated to specified location" -ForegroundColor Green
+    }
+    catch {
+        Write-Host "Error operating Visual Studio: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "This may happen if Visual Studio is busy or the file cannot be opened." -ForegroundColor Yellow
     }
 }
 
