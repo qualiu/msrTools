@@ -23,21 +23,30 @@ msr -z "LostArg%~1" -t "^LostArg(|-h|--help|/\?)$" > nul || (
     exit /b 0
 )
 
+:: Detect -SD flag (ShowDescendants, not a valid msr arg) and strip from msr args
+set "ShowDescendantsArg="
+set "MsrArgs=%*"
+set "MsrArgsNoSD=!MsrArgs:-SD=!"
+if "!MsrArgsNoSD!" NEQ "!MsrArgs!" (
+    set "ShowDescendantsArg=-ShowDescendants true"
+    set "MsrArgs=!MsrArgsNoSD!"
+)
+
 :: Test args for msr.exe
-msr -z justTestArgs %* >nul 2>nul
+msr -z justTestArgs !MsrArgs! >nul 2>nul
 if %ERRORLEVEL% LSS 0 (
     echo Error parameters for %~nx0: %* , test with: -z justTestArgs: | msr -aPA -t "Error.*for (\S+)" -e "test with"
-    msr -z justTestArgs %*
+    msr -z justTestArgs !MsrArgs!
     exit /b -1
 )
 
-echo %* | msr -t "(^|\s+)(-[PACIMO]+|-[UDHT]\s*\d+|-c\s*.*)" -o "" -aPAC | msr -t "^\d+[\d ]*$" >nul
+echo !MsrArgs! | msr -t "(^|\s+)(-[PACIMO]+|-[UDHT]\s*\d+|-c\s*.*)" -o "" -aPAC | msr -t "^\d+[\d ]*$" >nul
 set /a IsAllNumbersAsPIDs=!ERRORLEVEL!
 
-msr -z justTestArgs %* -P >nul 2>nul
+msr -z justTestArgs !MsrArgs! -P >nul 2>nul
 if !ERRORLEVEL! NEQ -1 set NoPathToPsAll=-P
 
-msr -z justTestArgs %* -A >nul 2>nul
+msr -z justTestArgs !MsrArgs! -A >nul 2>nul
 if !ERRORLEVEL! NEQ -1 set NoInfoToPsAll=-A
 
 where taskkill.exe >nul 2>nul
@@ -48,7 +57,7 @@ if !ERRORLEVEL! EQU 0 ( set "PwshExe=pwsh" ) else ( set "PwshExe=PowerShell" )
 
 set "PIDs="
 if !IsAllNumbersAsPIDs! GTR 0 (
-    for /f "tokens=*" %%a in ('echo %* ^| msr -t "\s+(\d+)" -o ",\1" -aPAC ^| msr -t "\s+$" -o "" -aPAC') do (
+    for /f "tokens=*" %%a in ('echo !MsrArgs! ^| msr -t "\s+(\d+)" -o ",\1" -aPAC ^| msr -t "\s+$" -o "" -aPAC') do (
         call !PwshExe! -Command "& '!PsToolPath!' -Ids '%%a' -Action Stop"
     )
     exit /b !ERRORLEVEL!
@@ -58,6 +67,7 @@ set ALL_ARGS=
 :reset_all_args
     if "%~1"=="" goto args_done
     set "currentArg=%~1"
+    if /I "!currentArg!"=="-SD" ( shift & goto reset_all_args )
     if "!currentArg:~0,2!"=="-H" ( shift & if "!currentArg!"=="-H" shift & goto reset_all_args )
     if "!currentArg:~0,2!"=="-T" ( shift & if "!currentArg!"=="-T" shift & goto reset_all_args )
     if "!currentArg:~0,6!"=="--head" ( shift & shift & goto reset_all_args )
@@ -83,8 +93,9 @@ set ALL_ARGS=
 
 :: Parse msr arguments for PsTool.ps1
 set "PsToolArgs=-Action Stop"
+if defined ShowDescendantsArg set "PsToolArgs=!PsToolArgs! !ShowDescendantsArg!"
 set "ArgNamesPattern=has-text|text-match|ignore-case|nx|nt|colors|out-all|no-any-info|no-path-line|no-summary|head|tail"
-for /f "tokens=1,*" %%a in ('msr -z justTestArgs %* --verbose 2^>^&1 ^| msr -t "^([\s-]+)(!ArgNamesPattern!) = (.+)" -o "\1\2\t\3" -PAC') do (
+for /f "tokens=1,*" %%a in ('msr -z justTestArgs !MsrArgs! --verbose 2^>^&1 ^| msr -t "^([\s-]+)(!ArgNamesPattern!) = (.+)" -o "\1\2\t\3" -PAC') do (
     echo %%a | findstr /R "^--" >nul && set "prefix=--" || set "prefix="
     set "name=%%a" & set "name=!name:--=!" & set "name=!name: =!"
     set "value=%%b"

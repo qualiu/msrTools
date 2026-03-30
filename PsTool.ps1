@@ -49,6 +49,9 @@
 .PARAMETER ExcludeAllText
     Plain text that excludes processes when found in process ID, parent process ID, process name, or command line using string contains (any one match excludes the process)
 
+.PARAMETER ShowDescendants
+    Whether to show descendant processes (default: "false"). Accepts "1", "0", "true", or "false". When true, shows child/grandchild processes in DarkGray below the matched processes. Default is false because descendants often outnumber matched processes (e.g. 200+ vs 30), adding noise to typical searches. Alias: -SD.
+
 .PARAMETER NoHeader
     Whether to suppress header output (default: "false"). Accepts "1", "0", "true", or "false". When true, suppresses "ParentId PID Name CommandLine" header.
 
@@ -120,6 +123,8 @@ param(
     [string]$MatchAllText = "",
     [string]$ExcludeAllPattern = "",
     [string]$ExcludeAllText = "",
+    [Alias("SD")]
+    [string]$ShowDescendants = "false",
     [string]$NoHeader = "false",
     [string]$NoSummary = "false",
     [int]$Head = -1,
@@ -165,13 +170,14 @@ if ($Action -eq "Stop") {
 
 $ProcessIdList = @()
 if (-not [string]::IsNullOrWhiteSpace($Ids)) {
-    if ($Ids -notmatch '^\d+[\d, ]*$') {
+    if ($Ids -notmatch '^\d+[\d, ]*\d+$' -and $Ids -notmatch '^\d+$') {
         throw "Invalid Ids format: '$Ids'. Expected format: '123,456,789' or '123' (comma-separated list of integers)."
     }
-    $ProcessIdList = @($Ids) | ForEach-Object { "$_" -split ',' } | ForEach-Object { [int] $_.Trim() }
+    $ProcessIdList = "$Ids" -split '[,\s]+' | Where-Object { $_ -ne '' } | ForEach-Object { [int]$_ }
 }
 
 $IgnoreCaseBool = $IgnoreCase -imatch "1|true|yes|on"
+$ShowDescendantsBool = $ShowDescendants -imatch "1|true|yes|on"
 $NoHeaderBool = $NoHeader -imatch "1|true|yes|on"
 $NoSummaryBool = $NoSummary -imatch "1|true|yes|on"
 $OutToStderrForHeaderSummaryBool = $OutToStderrForHeaderSummary -imatch "1|true|yes|on"
@@ -184,7 +190,6 @@ $ComparisonType = if ($IgnoreCaseBool) { [System.StringComparison]::OrdinalIgnor
 function New-RegexObject {
     param (
         [string]$Pattern,
-        [bool] $IsExclusive,
         [bool] $IgnoreCase = $true
     )
 
@@ -205,12 +210,12 @@ function New-RegexObject {
     }
 }
 
-$ProcessNameRegex = New-RegexObject -Pattern $ProcessNamePattern -IsExclusive $false -IgnoreCase $IgnoreCaseBool
-$CommandLineRegex = New-RegexObject -Pattern $CommandLinePattern -IsExclusive $false -IgnoreCase $IgnoreCaseBool
-$ExcludeProcessNameRegex = New-RegexObject -Pattern $ExcludeProcessNamePattern -IsExclusive $true -IgnoreCase $IgnoreCaseBool
-$ExcludeCommandLineRegex = New-RegexObject -Pattern $ExcludeCommandLinePattern -IsExclusive $true -IgnoreCase $IgnoreCaseBool
-$MatchAllRegex = New-RegexObject -Pattern $MatchAllPattern -IsExclusive $false -IgnoreCase $IgnoreCaseBool
-$ExcludeAllRegex = New-RegexObject -Pattern $ExcludeAllPattern -IsExclusive $true -IgnoreCase $IgnoreCaseBool
+$ProcessNameRegex = New-RegexObject -Pattern $ProcessNamePattern -IgnoreCase $IgnoreCaseBool
+$CommandLineRegex = New-RegexObject -Pattern $CommandLinePattern -IgnoreCase $IgnoreCaseBool
+$ExcludeProcessNameRegex = New-RegexObject -Pattern $ExcludeProcessNamePattern -IgnoreCase $IgnoreCaseBool
+$ExcludeCommandLineRegex = New-RegexObject -Pattern $ExcludeCommandLinePattern -IgnoreCase $IgnoreCaseBool
+$MatchAllRegex = New-RegexObject -Pattern $MatchAllPattern -IgnoreCase $IgnoreCaseBool
+$ExcludeAllRegex = New-RegexObject -Pattern $ExcludeAllPattern -IgnoreCase $IgnoreCaseBool
 
 # Function to check if parent/self process should be excluded based on tool execution patterns
 function Test-ShouldExcludeSelfProcess {
@@ -241,64 +246,68 @@ function Test-ShouldExcludeSelfProcess {
     return $false
 }
 
-# Function to get parent/self processes that should be excluded from results
+# Function to get parent/self processes that should be excluded from results.
+# Walks up the ancestor chain from CurrentPid:
+#   - Unconditionally excludes the immediate parent (level 0, e.g. cmd.exe running "call pwsh PsTool.ps1")
+#   - For higher ancestors, excludes only if Test-ShouldExcludeSelfProcess returns true
+#     (e.g. cmd.exe /c "psall.bat ...", msr.exe, PowerShell running PsTool.ps1)
+#   - At each excluded ancestor, also excludes its other tool-process children (siblings)
+#   - Stops when a non-tool ancestor is found (the user's terminal)
 function Get-ExcludedSelfProcessIds {
     param(
         [array]$AllProcesses,
-        [int]$CurrentPid,
-        [string]$PlainCommandLine = "",
-        [string]$CommandLinePattern = ""
+        [int]$CurrentPid
     )
 
-    $excludePIDs = @()
+    $excludePIDs = [System.Collections.Generic.HashSet[int]]::new()
+    [void]$excludePIDs.Add($CurrentPid)
 
+    $currentId = $CurrentPid
+    $isFirstLevel = $true
+    $maxLevels = 6  # Safety limit to prevent infinite loops
 
-    # Exclude current process (PsTool.ps1)
-    $excludePIDs += $CurrentPid
+    for ($level = 0; $level -lt $maxLevels; $level++) {
+        $proc = $AllProcesses | Where-Object { $_.ProcessId -eq $currentId } | Select-Object -First 1
+        if (-not $proc -or $proc.ParentProcessId -le 0) { break }
 
-    # Find parent process information
-    $currentProcess = $AllProcesses | Where-Object { $_.ProcessId -eq $CurrentPid } | Select-Object -First 1
-    if ($currentProcess -and $currentProcess.ParentProcessId -gt 0) {
-        $parentProcess = $AllProcesses | Where-Object { $_.ProcessId -eq $currentProcess.ParentProcessId } | Select-Object -First 1
+        $parentId = $proc.ParentProcessId
+        $parentProc = $AllProcesses | Where-Object { $_.ProcessId -eq $parentId } | Select-Object -First 1
+        if (-not $parentProc) { break }
 
-        if ($parentProcess) {
-            # Exclude parent process (usually cmd.exe that calls psall.bat/pskill.bat)
-            $excludePIDs += $parentProcess.ProcessId
+        # Immediate parent is always excluded; higher ancestors only if they are tool processes
+        $shouldExcludeParent = $isFirstLevel -or (Test-ShouldExcludeSelfProcess -Process $parentProc)
 
-            # Find all child processes of the parent (siblings of current process)
-            $siblings = $AllProcesses | Where-Object { $_.ParentProcessId -eq $parentProcess.ProcessId }
+        if ($shouldExcludeParent) {
+            [void]$excludePIDs.Add($parentId)
 
-            foreach ($sibling in $siblings) {
-                # Only exclude processes that are actually executing our tools, not just referencing them
-                if (Test-ShouldExcludeSelfProcess -Process $sibling) {
-                    $excludePIDs += $sibling.ProcessId
+            # Exclude siblings (other children of parent) that are tool processes
+            $AllProcesses | Where-Object { $_.ParentProcessId -eq $parentId -and $_.ProcessId -ne $currentId } | ForEach-Object {
+                if (Test-ShouldExcludeSelfProcess -Process $_) {
+                    [void]$excludePIDs.Add($_.ProcessId)
                 }
             }
 
-            # Also check grandparent level if parent is cmd.exe (often the case)
-            if (($parentProcess.Name -imatch '^(cmd)(\.exe)?$') -and $parentProcess.ParentProcessId -gt 0) {
-                $grandparentProcess = $AllProcesses | Where-Object { $_.ProcessId -eq $parentProcess.ParentProcessId } | Select-Object -First 1
-                if ($grandparentProcess) {
-                    # Find all children of grandparent that might be related to our tools
-                    $grandparentChildren = $AllProcesses | Where-Object { $_.ParentProcessId -eq $grandparentProcess.ProcessId }
-                    foreach ($child in $grandparentChildren) {
-                        # Only exclude processes that are actually executing our tools
-                        if (Test-ShouldExcludeSelfProcess -Process $child) {
-                            $excludePIDs += $child.ProcessId
-                        }
-                    }
+            $currentId = $parentId
+            $isFirstLevel = $false
+        }
+        else {
+            # Non-tool ancestor found: exclude its tool-process children (e.g. cmd.exe /c "psall.bat"), then stop
+            $AllProcesses | Where-Object { $_.ParentProcessId -eq $parentId } | ForEach-Object {
+                if (Test-ShouldExcludeSelfProcess -Process $_) {
+                    [void]$excludePIDs.Add($_.ProcessId)
                 }
             }
+            break
         }
     }
 
-    return $excludePIDs | Sort-Object -Unique
+    return @($excludePIDs | Sort-Object -Unique)
 }
 
 # Function to get all processes with normalized structure
 function Get-AllProcesses {
     try {
-        # Try CIM first (newer), then WMI, then fallback to Get-Process
+        # Try CIM first (newer), fallback to Get-Process
         $processes = $null
 
         if ($IsWindows) {
@@ -306,13 +315,7 @@ function Get-AllProcesses {
                 $processes = Get-CimInstance -ClassName Win32_Process -ErrorAction SilentlyContinue
             }
             catch {
-                Write-Debug "CIM query failed, falling back to WMI"
-                try {
-                    $processes = Get-WmiObject -Class Win32_Process -ErrorAction SilentlyContinue
-                }
-                catch {
-                    Write-Debug "WMI query failed, falling back to Get-Process"
-                }
+                Write-Debug "CIM query failed, falling back to Get-Process"
             }
         }
 
@@ -333,9 +336,6 @@ function Get-AllProcesses {
                 $parentId = 0
                 try {
                     $parentId = (Get-CimInstance -ClassName Win32_Process -Filter "ProcessId = $($_.Id)" -ErrorAction SilentlyContinue).ParentProcessId
-                    if (-not $parentId) {
-                        $parentId = (Get-WmiObject -Class Win32_Process -Filter "ProcessId = $($_.Id)" -ErrorAction SilentlyContinue).ParentProcessId
-                    }
                 }
                 catch {
                     $parentId = 0
@@ -473,6 +473,69 @@ function Out-KeyMessage {
     }
 }
 
+# Function to get descendant processes in BFS level order (parent -> child -> grandchild).
+# Returns an ordered array of process objects for display purposes.
+function Get-DescendantProcessesOrdered {
+    param(
+        [array]$AllProcesses,
+        [int[]]$RootIds
+    )
+    $visited = [System.Collections.Generic.HashSet[int]]::new()
+    foreach ($id in $RootIds) { [void]$visited.Add($id) }
+
+    $ordered = [System.Collections.Generic.List[object]]::new()
+    $queue = [System.Collections.Generic.Queue[int]]::new()
+    foreach ($id in $RootIds) { $queue.Enqueue($id) }
+
+    while ($queue.Count -gt 0) {
+        $currentId = $queue.Dequeue()
+        $children = $AllProcesses | Where-Object {
+            $_.ParentProcessId -eq $currentId -and (-not $visited.Contains($_.ProcessId))
+        } | Sort-Object ProcessId
+        foreach ($child in $children) {
+            [void]$visited.Add($child.ProcessId)
+            $ordered.Add($child)
+            $queue.Enqueue($child.ProcessId)
+        }
+    }
+    return $ordered
+}
+
+# Output descendant processes in DarkGray if ShowDescendants is enabled.
+# Returns the list of descendant process objects (empty array if disabled).
+# Accepts either pre-computed descendants or AllProcesses+RootIds to compute them.
+function Out-DescendantProcesses {
+    param(
+        [array]$AllProcesses = @(),
+        [int[]]$RootIds = @(),
+        [array]$Descendants = $null
+    )
+    if (-not $ShowDescendantsBool) { return @() }
+    $descendantProcs = if ($null -ne $Descendants) { $Descendants } else { Get-DescendantProcessesOrdered -AllProcesses $AllProcesses -RootIds $RootIds }
+    foreach ($proc in $descendantProcs) {
+        Out-StderrMessage -Message (Format-ProcessOutput -Process $proc) -Color "DarkGray"
+    }
+    return $descendantProcs
+}
+
+# Output summary message with optional descendant count info.
+function Out-ProcessSummary {
+    param(
+        [string]$Verb,           # e.g. "Found" or "Successfully terminated"
+        [int]$MatchedCount,
+        [int]$DescendantCount = 0
+    )
+    $matchedWord = if ($MatchedCount -eq 1) { "process" } else { "processes" }
+    if ($DescendantCount -gt 0) {
+        $descendantWord = if ($DescendantCount -eq 1) { "descendant" } else { "descendants" }
+        $hint = if (-not $ShowDescendantsBool) { " (Use -SD to show all)" } else { "" }
+        Out-KeyMessage -Message "$Verb $MatchedCount matched $matchedWord with $DescendantCount $descendantWord.$hint" -Type "success"
+    }
+    else {
+        Out-KeyMessage -Message "$Verb $MatchedCount matched $matchedWord." -Type "success"
+    }
+}
+
 # Function to apply Head/Tail filtering
 function Get-FilteredByHeadTail {
     param(
@@ -546,9 +609,15 @@ function Test-ProcessAllFieldsMatch {
 }
 
 function Get-MatchedProcesses {
+    param(
+        $AllProcessesRef = $null
+    )
     try {
-        # Get all processes with normalized structure
+        # Get all processes with normalized structure (single snapshot for entire operation)
         $allProcesses = Get-AllProcesses
+        if ($null -ne $AllProcessesRef -and $AllProcessesRef -is [ref]) {
+            $AllProcessesRef.Value = $allProcesses
+        }
         $processes = $allProcesses
 
         if ($ProcessIdList.Count -gt 0) {
@@ -595,7 +664,7 @@ function Get-MatchedProcesses {
         }
 
         # Get processes to exclude (self and related tool processes)
-        $excludePIDs = Get-ExcludedSelfProcessIds -AllProcesses $allProcesses -CurrentPid $PID -PlainCommandLine $CommandLine -CommandLinePattern $CommandLinePattern
+        $excludePIDs = Get-ExcludedSelfProcessIds -AllProcesses $allProcesses -CurrentPid $PID
 
         # Filter out excluded processes
         $processes = $processes | Where-Object {
@@ -625,7 +694,8 @@ function Get-MatchedProcesses {
 }
 
 function Find-Processes {
-    $processes = Get-MatchedProcesses
+    $allProcessesSnapshot = $null
+    $processes = Get-MatchedProcesses -AllProcessesRef ([ref]$allProcessesSnapshot)
     $script:MatchedProcessCount = $processes.Count
 
     if ($processes.Count -eq 0) {
@@ -647,11 +717,19 @@ function Find-Processes {
         Write-Output (Format-ProcessOutput -Process $proc)
     }
 
-    Out-KeyMessage -Message "Found $($processes.Count) matched processes." -Type "success"
+    # Show descendant processes in BFS order (parent -> child -> grandchild, DarkGray)
+    # so users can trace the process tree and preview the full kill impact.
+    $processIds = @($outputProcesses.ProcessId)
+    $descendantProcs = Get-DescendantProcessesOrdered -AllProcesses $allProcessesSnapshot -RootIds $processIds
+    Out-DescendantProcesses -Descendants $descendantProcs | Out-Null
+    Out-ProcessSummary -Verb "Found" -MatchedCount $processes.Count -DescendantCount $descendantProcs.Count
 }
 
 function Stop-Processes {
-    $processes = Get-MatchedProcesses
+    # Use [ref] to get the same allProcesses snapshot used for matching,
+    # avoiding a second Get-AllProcesses call that could produce an inconsistent snapshot.
+    $allProcessesSnapshot = $null
+    $processes = Get-MatchedProcesses -AllProcessesRef ([ref]$allProcessesSnapshot)
     $script:MatchedProcessCount = $processes.Count
 
     if ($processes.Count -eq 0) {
@@ -662,26 +740,69 @@ function Stop-Processes {
     # Sort processes by ProcessId for consistent output
     $processes = $processes | Sort-Object ProcessId | Where-Object { $_.ProcessId -gt 0 }
 
-    # Output header
-    Out-ResultHeader
-
-    foreach ($proc in $processes) {
-        Write-Output (Format-ProcessOutput -Process $proc)
-    }
-
     # Extract process IDs for batch killing
-    $processIds = $processes | ForEach-Object { $_.ProcessId }
+    $processIds = @($processes.ProcessId)
     if ($processIds.Count -eq 0) {
         Out-KeyMessage -Message "No matching process to terminate." -Type "warning"
         return
     }
 
-    # Use batch termination with Stop-Process (more efficient and handles dependencies better)
-    Write-Debug "Attempting to terminate $($processIds.Count) processes using batch operation..."
+    # Find all descendant processes using the SAME snapshot (prevents orphans).
+    # Reusing $allProcessesSnapshot avoids a second Get-AllProcesses call whose results could
+    # differ from the first (race condition: new child processes spawned between two calls would
+    # be missed, becoming orphans after the parent is killed).
+    # NOTE: display is deferred — we show descendants after the alive-check below,
+    # but we need $descendantIds now to build $allIdsToKill for the alive-check itself.
+    $descendantProcs = Get-DescendantProcessesOrdered -AllProcesses $allProcessesSnapshot -RootIds $processIds
+    $descendantIds = @($descendantProcs.ProcessId)
+    $childCount = $descendantIds.Count
+
+    # Always kill descendants together with matched roots on Windows.
+    # On Windows, killing a parent does NOT auto-terminate children — they become orphan processes
+    # that continue consuming resources with no parent to manage them.
+    # Unlike Linux (where init adopts orphans), Windows has no automatic orphan cleanup.
+    # If the user wants to kill only specific PIDs, they should use -Ids to target them directly.
+    $allIdsToKill = (@($processIds) + @($descendantIds)) | Sort-Object -Unique
+    # Kill order: reverse-BFS (deepest descendants first), then matched roots last.
+    # PID value does NOT reflect tree depth — a parent may have a larger PID than its child.
+    # Using reverse-BFS guarantees children are always terminated before their parents,
+    # preventing orphan processes during the brief window between individual kills.
+    [array]$reversedDescendantIds = @($descendantIds)
+    [array]::Reverse($reversedDescendantIds)
+    $killOrderIds = $reversedDescendantIds + @($processIds | Sort-Object -Descending)
+
+    # Use batch termination with Stop-Process
+    Write-Debug "Attempting to terminate $($allIdsToKill.Count) processes ($($processIds.Count) matched + $childCount descendants)..."
 
     try {
-        # Use Stop-Process with multiple IDs for batch termination
-        Stop-Process -Id $processIds -Force -ErrorAction Stop
+        # Filter out PIDs that no longer exist (child processes may have already exited)
+        $aliveIds = @($allIdsToKill | Where-Object { Get-Process -Id $_ -ErrorAction SilentlyContinue })
+        if ($aliveIds.Count -eq 0) {
+            Out-KeyMessage -Message "All $($allIdsToKill.Count) target processes already exited before termination." -Type "info"
+            return
+        }
+
+        # Output header and matched process list AFTER confirming processes are still alive,
+        # to avoid showing a process list followed by "already exited" (contradictory output).
+        Out-ResultHeader
+        foreach ($proc in $processes) {
+            Write-Output (Format-ProcessOutput -Process $proc)
+        }
+
+        # Show descendant processes in BFS order (parent -> child -> grandchild, DarkGray)
+        # consistent with Find mode, so users can trace the process tree top-down.
+        Out-DescendantProcesses -Descendants $descendantProcs | Out-Null
+
+        # Kill in reverse-BFS order: deepest descendants first, then matched roots last.
+        # PID value does NOT reflect tree depth — a parent may have a larger PID than its child.
+        # Using reverse-BFS guarantees children are always terminated before their parents.
+        $aliveIdsSet = [System.Collections.Generic.HashSet[int]]::new([int[]]$aliveIds)
+        $aliveIds = @($killOrderIds | Where-Object { $aliveIdsSet.Contains($_) })
+
+        # Use Stop-Process for batch termination.
+        # Use SilentlyContinue (not Stop) so that a process that exits between the alive-check
+        # and Stop-Process call does not abort the entire batch and leave other processes alive.
+        Stop-Process -Id $aliveIds -Force -ErrorAction SilentlyContinue
 
         # Wait a moment for processes to terminate
         Start-Sleep -Milliseconds 500
@@ -709,7 +830,7 @@ function Stop-Processes {
             Out-KeyMessage -Message "Remains $failedCount processes could not be terminated (may be protected or have dependencies)." -Type "warning"
         }
         else {
-            Out-KeyMessage -Message "Successfully terminated $($processIds.Count) processes." -Type "success"
+            Out-ProcessSummary -Verb "Successfully terminated" -MatchedCount $processIds.Count -DescendantCount $childCount
         }
     }
     catch {

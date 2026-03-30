@@ -1,8 +1,8 @@
 :: ############################################################################
 :: This tool is to find all process by the searching options of the process:
 ::  ParentProcessId ProcessId Name CommandLine
-:: Filter self of msr.exe please append with:
-::    --nx msr.exe or --nt msr\.exe
+:: The script automatically excludes itself and related tool processes
+::  (msr.exe, psall.bat, pskill.bat, PsTool.ps1) from results.
 ::
 :: Output line format, separated by TAB: ParentProcessId ProcessId Name CommandLine
 :: [1]: Default: :RowNumber: ParentProcessId ProcessId Name CommandLine
@@ -30,11 +30,20 @@ msr -z "LostArg%~1" -t "^LostArg(|-h|--help|/\?)$" > nul || (
     exit /b 0
 )
 
+:: Detect -SD flag (ShowDescendants, not a valid msr arg) and strip from msr args
+set "ShowDescendantsArg="
+set "MsrArgs=%*"
+set "MsrArgsNoSD=!MsrArgs:-SD=!"
+if "!MsrArgsNoSD!" NEQ "!MsrArgs!" (
+    set "ShowDescendantsArg=-ShowDescendants true"
+    set "MsrArgs=!MsrArgsNoSD!"
+)
+
 :: Test args for msr.exe
-msr -z justTestArgs %* >nul 2>nul
+msr -z justTestArgs !MsrArgs! >nul 2>nul
 if %ERRORLEVEL% LSS 0 (
     echo Error parameters for %~nx0: %* , test with: -z justTestArgs: | msr -aPA -t "Error.*for \S+(.*(test with.*(-z (justTestArgs))))"
-    msr -z justTestArgs %*
+    msr -z justTestArgs !MsrArgs!
     exit /b -1
 )
 
@@ -45,6 +54,7 @@ set ALL_ARGS=
 :reset_all_args
     if "%~1"=="" goto args_done
     set "currentArg=%~1"
+    if /I "!currentArg!"=="-SD" ( shift & goto reset_all_args )
     if "!currentArg:~0,2!"=="-H" ( shift & if "!currentArg!"=="-H" shift & goto reset_all_args )
     if "!currentArg:~0,2!"=="-T" ( shift & if "!currentArg!"=="-T" shift & goto reset_all_args )
     if "!currentArg:~0,6!"=="--head" ( shift & shift & goto reset_all_args )
@@ -70,8 +80,9 @@ set ALL_ARGS=
 
 :: Parse msr arguments for PsTool.ps1
 set "PsToolArgs=-Action Find"
+if defined ShowDescendantsArg set "PsToolArgs=!PsToolArgs! !ShowDescendantsArg!"
 set "ArgNamesPattern=has-text|text-match|ignore-case|nx|nt|colors|out-all|no-any-info|no-path-line|no-summary|head|tail"
-for /f "tokens=1,*" %%a in ('msr -z justTestArgs %* --verbose 2^>^&1 ^| msr -t "^([\s-]+)(!ArgNamesPattern!) = (.+)" -o "\1\2\t\3" -PAC') do (
+for /f "tokens=1,*" %%a in ('msr -z justTestArgs !MsrArgs! --verbose 2^>^&1 ^| msr -t "^([\s-]+)(!ArgNamesPattern!) = (.+)" -o "\1\2\t\3" -PAC') do (
     echo %%a | findstr /R "^--" >nul && set "prefix=--" || set "prefix="
     set "name=%%a" & set "name=!name:--=!" & set "name=!name: =!"
     set "value=%%b"
