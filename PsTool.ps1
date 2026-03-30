@@ -473,6 +473,30 @@ function Out-KeyMessage {
     }
 }
 
+# Function to recursively find all descendant process IDs
+function Get-DescendantProcessIds {
+    param(
+        [array]$AllProcesses,
+        [int[]]$ParentIds,
+        [System.Collections.Generic.HashSet[int]]$Visited = $null
+    )
+    if (-not $Visited) {
+        $Visited = [System.Collections.Generic.HashSet[int]]::new()
+        foreach ($id in $ParentIds) { [void]$Visited.Add($id) }
+    }
+    $descendants = @()
+    $children = $AllProcesses | Where-Object {
+        $_.ParentProcessId -in $ParentIds -and (-not $Visited.Contains($_.ProcessId))
+    }
+    if ($children) {
+        $childIds = @($children.ProcessId)
+        foreach ($id in $childIds) { [void]$Visited.Add($id) }
+        $descendants += $childIds
+        $descendants += Get-DescendantProcessIds -AllProcesses $AllProcesses -ParentIds $childIds -Visited $Visited
+    }
+    return $descendants | Sort-Object -Unique
+}
+
 # Function to apply Head/Tail filtering
 function Get-FilteredByHeadTail {
     param(
@@ -676,12 +700,30 @@ function Stop-Processes {
         return
     }
 
-    # Use batch termination with Stop-Process (more efficient and handles dependencies better)
-    Write-Debug "Attempting to terminate $($processIds.Count) processes using batch operation..."
+    # Find all descendant processes to kill together (prevents orphans)
+    $allProcessData = Get-AllProcesses
+    $descendantIds = Get-DescendantProcessIds -AllProcesses $allProcessData -ParentIds $processIds
+    $allIdsToKill = (@($processIds) + @($descendantIds)) | Sort-Object -Unique
+    $childCount = $allIdsToKill.Count - $processIds.Count
+
+    if ($childCount -gt 0) {
+        Write-Debug "Found $childCount child/descendant processes to terminate together."
+    }
+
+    # Use batch termination with Stop-Process
+    Write-Debug "Attempting to terminate $($allIdsToKill.Count) processes ($($processIds.Count) matched + $childCount descendants)..."
 
     try {
-        # Use Stop-Process with multiple IDs for batch termination
-        Stop-Process -Id $processIds -Force -ErrorAction Stop
+        # Filter out PIDs that no longer exist (child processes may have already exited)
+        $aliveIds = @($allIdsToKill | Where-Object { Get-Process -Id $_ -ErrorAction SilentlyContinue })
+        if ($aliveIds.Count -eq 0) {
+            Out-KeyMessage -Message "All $($allIdsToKill.Count) target processes already exited." -Type "info"
+            Out-KeyMessage -Message "Successfully terminated $($processIds.Count) processes." -Type "success"
+            return
+        }
+
+        # Use Stop-Process with alive IDs only for batch termination
+        Stop-Process -Id $aliveIds -Force -ErrorAction Stop
 
         # Wait a moment for processes to terminate
         Start-Sleep -Milliseconds 500
