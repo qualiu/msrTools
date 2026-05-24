@@ -169,7 +169,6 @@ function Get-AzureObjectName {
         }
     }
 
-
     if ($(-not [string]::IsNullOrWhiteSpace($Resource.name)) -and $($Resource.name -notmatch '^\w+-\w+-\w+-[\w-]+$')) {
         return $Resource.name
     }
@@ -254,7 +253,6 @@ function Get-AlertRuleByName {
     $obj = $text | ConvertFrom-Json
     return $obj
 }
-
 
 function Get-AlertRuleUrlById {
     param(

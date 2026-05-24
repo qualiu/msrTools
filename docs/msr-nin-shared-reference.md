@@ -6,6 +6,17 @@ Shared reference for **msr** and **nin** — both tools come from the [same repo
 
 ---
 
+## Parameter Usage Rules
+
+**All** msr/nin parameters (both short flags and long options) can only be specified **once** per command line. Duplicating any parameter causes an error: `cannot be specified more than once`.
+
+This rule applies not only to direct `msr`/`nin` commands, but also to their wrappers — `gfind-*` / `find-*` aliases and script files — which already have built-in parameters.
+
+**Key rules:**
+- `-t` (regex match), `-x` (plain text match), `--nt` (regex exclude), and `--nx` (text exclude) — these 4 can be used **together** in the same command (AND combination filtering), but each can only appear **once**.
+- `gfind-*` / `find-*` aliases have built-in parameters (e.g., `-I`, `-f`, `--nd`). Do **not** repeat these when appending extra arguments.
+- Common mistakes: using `-PIC` with aliases (already has `-I`) → use `-PC` instead; adding `-f` to `find-py` (already has `-f` built-in) → not allowed.
+
 ## Regex Syntax
 
 Both msr and nin use the **same regex engine** — Boost regex (PCRE-compatible with extensions). All regex features behave identically between the two tools.
@@ -30,7 +41,7 @@ Both `msr` and `nin` accept **both** path separators on Windows input paths:
 For `msr`, comma-separated multi-path input in `-p` also supports mixed separators in one command:
 
 ```bash
-msr -p "C:/repo/docs/a.md,C:\repo\docs\b.md" -t "pattern" -l
+msr -p "C:/repo/docs/a.md,C:\repo\docs\b.md" -t "\bTargetSymbol\b" -l
 ```
 
 Why this is useful:
@@ -40,6 +51,26 @@ Why this is useful:
 - Less path normalization logic needed in automation and AI-generated commands
 
 ---
+
+## PowerShell Pipe Character in Arguments
+
+When calling `.cmd` scripts (including `gfind-*`, `find-*` aliases) from **PowerShell** on Windows, any command-line argument containing `|` can be misinterpreted as a pipe operator by CMD. This affects any `.cmd` file invocation, not just msr/nin.
+
+**Two workarounds:**
+
+```bash
+# Method 1: Use --% stop-parsing token (recommended, simpler)
+gfind-ts --% -t "\bClassA\b|\bClassB\b" -H 10
+gfind-ts --% -t "\bClassA\b" --nt "\bget(X|Y)\b" -H 10
+find-cs --% -t "\bTODO\b|\bFIXME\b" -o "RESOLVED" -j
+
+# Method 2: Wrap entire command with cmd /c and escape inner quotes with ""
+cmd /c "gfind-ts -t ""ClassA|ClassB"" -H 10"
+```
+
+> **Rule**: On Windows PowerShell, if a `gfind-*` / `find-*` command line contains `|` anywhere, prefer adding `--%` immediately after the alias name.
+>
+> **Note**: This only affects PowerShell calling `.cmd` files. CMD terminals (doskeys), Linux/macOS shells, and bash terminals are not affected in the same default way.
 
 ## Return Value Cross-Platform Behavior
 
@@ -178,7 +209,7 @@ nin bom-file.txt nul "(\w+)" -pd
 # Output: WARN BOM Encoding = UTF-16(LE) 0xFFFE for file: bom-file.txt
 
 # Suppress BOM warnings (works for both msr and nin)
-msr -rp . -f "\.txt$" -t "pattern" --not-warn-bom
+msr -rp . -f "\.txt$" -t "\bTargetSymbol\b" --not-warn-bom
 nin file.txt nul "(\w+)" --not-warn-bom
 ```
 
@@ -195,10 +226,10 @@ nin only reads files (no replacement capability), so BOM replacement is msr-spec
 ```bash
 # Replace in UTF-16 files requires --force
 # WARNING: This converts file encoding to UTF-8 no BOM!
-msr -rp . -f "\.cs$" -t "old" -o "new" -R --force
+msr -rp . -f "\.cs$" -t "\bOldSymbol\b" -o "NewSymbol" -R --force
 
 # Recommended: Backup original files when using --force
-msr -rp . -f "\.cs$" -t "old" -o "new" -RK --force
+msr -rp . -f "\.cs$" -t "\bOldSymbol\b" -o "NewSymbol" -RK --force
 ```
 
 **Important Behavior**:
@@ -285,6 +316,10 @@ While msr and nin share the same regex engine and many parameters, a few single-
 | `-A` | `--no-any-info` — suppress ALL info including summary | `--no-any-info` — suppress ALL info including summary | Same meaning ✅ |
 | `-M` | `--no-summary` — suppress summary only | `--no-summary` — suppress summary only | Same meaning ✅ |
 | `-C` | `--no-color` — disable color output | `--no-color` — disable color output | Same meaning ✅ |
+| `-a` | `--out-all` — output all lines including non-matches | `--ascending` — ascending sort | Completely different ⚠️ |
+| `-w` | `--read-paths` — read file list from a text file | `--out-whole-line` — output whole line instead of key | Completely different ⚠️ |
+| `-n` | `--sort-as-number` — numeric sort | `--out-not-captured` — also output non-matching lines | Completely different ⚠️ |
+| `-m` | `--show-count` — prefix match count to each line | `--intersection` — intersection set mode | Completely different ⚠️ |
 
 > ⚠️ **Critical for piping msr → nin**: When piping msr output to nin, use `-PIC` on msr (not `-PAC`) to keep summary on stderr for diagnostics. For aliases (which already include `-I`), use `-PC` instead.
 >
@@ -344,13 +379,13 @@ Both msr and nin support color customization using `--colors` or environment var
 
 ```bash
 # No target prefix: set all text groups (t/x/e) to Green
-msr -rp . -f "\.cs$" -t "error" -e "\d+" -x "warn" --colors "Green"
+msr -rp . -f "\.cs$" -t "\berror\b" -e "\d+" -x "warn" --colors "Green"
 
 # Basic: color -t matches in red (verified: 91m)
-msr -rp . -f "\.cs$" -t "error" --colors "t=Red"
+msr -rp . -f "\.cs$" -t "\berror\b" --colors "t=Red"
 
 # Foreground + background: red text on yellow background (verified: 91;43m)
-msr -p file.txt -t "error" -e "\d+" --colors "t=Red_Yellow,e=Green"
+msr -p file.txt -t "\berror\b" -e "\d+" --colors "t=Red_Yellow,e=Green"
 
 # Parallel capture groups — each group gets one color (verified)
 msr -z "abcd" -t "(\w)(\w)(\w)(\w)" --colors "t=Red+Green+Yellow+Blue"
@@ -365,7 +400,7 @@ msr -z "ab cd" -t "(\w)(\w)" --colors "t=Red_Yellow+Green_Blue"
 # Group 1: Green(92) on Blue(44); Group 2: Red(91) on Yellow(43)
 
 # Color paths: d=directory, f=filename (verified)
-msr -rp . -f "\.log$" -t "ERROR" --colors "d=Cyan,f=Yellow,m=Green"
+msr -rp . -f "\.log$" -t "\bERROR\b" --colors "d=Cyan,f=Yellow,m=Green"
 # Directory=Cyan(96), Filename=Bold Yellow(1;93), Summary=Green
 
 # p= sets both d and f together
@@ -373,15 +408,15 @@ msr -rp . -f "\.log$" -l --colors "p=Green_Blue"
 # Entire path colored with Green foreground on Blue background
 
 # Remove color for specific groups with None
-msr -rp . -f "\.log$" -t "ERROR" --colors "t=None"
+msr -rp . -f "\.log$" -t "\bERROR\b" --colors "t=None"
 # -t matches output without color; other groups keep defaults
 
 # Remove summary color
-msr -rp . -f "\.log$" -t "ERROR" --colors "m=None,u=None"
+msr -rp . -f "\.log$" -t "\bERROR\b" --colors "m=None,u=None"
 
 # Environment variable (persistent)
 export MSR_COLORS="t=Red,e=Green,d=Cyan"
-msr -rp . -f "\.log$" -t "error" -e "\d+"
+msr -rp . -f "\.log$" -t "\berror\b" -e "\d+"
 ```
 
 > **Note**: Targets marked ❌ for nin are msr-only — nin does not search files, so path-related color targets (`d`/`f`/`p`) don't apply.
@@ -401,11 +436,11 @@ Both msr and nin handle ANSI color codes **differently** on Windows vs Unix-like
 
 ```powershell
 # On Windows: terminal shows colors, but file has NO ANSI codes
-msr -z "test" -t "test" > output.txt
+msr -z "test" -t "\btest\b" > output.txt
 # File content: plain text, no escape sequences
 
 # With --keep-color: file CONTAINS ANSI codes (0x1B sequences)
-msr -z "test" -t "test" --keep-color > output.txt
+msr -z "test" -t "\btest\b" --keep-color > output.txt
 # File content: includes \x1B[95;40m...\x1B[0m color codes
 ```
 
@@ -417,11 +452,11 @@ msr -z "test" -t "test" --keep-color > output.txt
 
 ```bash
 # Option 1: Always use -PIC (safe on all platforms, keeps summary)
-msr -rp . -f "\.log$" -t "error" -PIC | other-tool
+msr -rp . -f "\.log$" -t "\berror\b" -PIC | other-tool
 
 # Option 2: Force colors everywhere with --keep-color or environment variable
 export MSR_KEEP_COLOR=1
-msr -rp . -t "error" > colored-output.txt  # Has ANSI codes on ALL platforms
+msr -rp . -t "\berror\b" > colored-output.txt  # Has ANSI codes on ALL platforms
 ```
 
 **Option and environment variable priority (all verified by test):**

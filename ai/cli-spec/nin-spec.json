@@ -1,0 +1,268 @@
+{
+  "--unique": {
+    "long": "--unique",
+    "short": "-u",
+    "takes_arg": false,
+    "default": null,
+    "help": "Get unique results, discard self/mutual duplicate lines/keys (key = captured groups[1] if set 1~2 Regex patterns)."
+  },
+  "--intersection": {
+    "long": "--intersection",
+    "short": "-m",
+    "takes_arg": false,
+    "default": null,
+    "help": "Get mutual lines/keys intersection in 2 files or file-with-pipe (default is exclusive: 'not-in-latter')."
+  },
+  "--ignore-case": {
+    "long": "--ignore-case",
+    "short": "-i",
+    "takes_arg": false,
+    "default": null,
+    "help": "Ignore case for plain text matching and Regex matching."
+  },
+  "--out-not-captured": {
+    "long": "--out-not-captured",
+    "short": "-n",
+    "takes_arg": false,
+    "default": null,
+    "help": "Also output not-captured keys/lines of Regex pattern in first file/pipe."
+  },
+  "--percentage": {
+    "long": "--percentage",
+    "short": "-p",
+    "takes_arg": false,
+    "default": null,
+    "help": "Output percentages of keys/lines at each line head, and sort by percentages."
+  },
+  "--out-whole-line": {
+    "long": "--out-whole-line",
+    "short": "-w",
+    "takes_arg": false,
+    "default": null,
+    "help": "Output matched lines other than keys (key = captured groups[1] of Regex pattern)."
+  },
+  "--ascending": {
+    "long": "--ascending",
+    "short": "-a",
+    "takes_arg": false,
+    "default": null,
+    "help": "Ascending sort output by lines or captured-keys or percentages."
+  },
+  "--descending": {
+    "long": "--descending",
+    "short": "-d",
+    "takes_arg": false,
+    "default": null,
+    "help": "Descending sort output by lines or captured-keys or percentages."
+  },
+  "--stop-at-count": {
+    "long": "--stop-at-count",
+    "short": "-k",
+    "takes_arg": true,
+    "default": null,
+    "help": "Stop if the matched count of a key/line > [N] when ascending output, or if count < [N] when descending output."
+  },
+  "--stop-percentage": {
+    "long": "--stop-percentage",
+    "short": "-K",
+    "takes_arg": true,
+    "default": null,
+    "help": "Stop if the percentage of a key/line > [P%] when ascending output, or if percentage < [P%] when descending output."
+  },
+  "--no-any-info": {
+    "long": "--no-any-info",
+    "short": "-A",
+    "takes_arg": false,
+    "default": null,
+    "help": "Not output any info, no warnings no summary (if no errors), only pure result (Please always use -PAC or -PC)."
+  },
+  "--info-normal-out": {
+    "long": "--info-normal-out",
+    "short": "-I",
+    "takes_arg": false,
+    "default": "true",
+    "help": "Output summary info to stdout (default is to stderr)."
+  },
+  "--no-summary": {
+    "long": "--no-summary",
+    "short": "-M",
+    "takes_arg": false,
+    "default": null,
+    "help": "Not output summary info."
+  },
+  "--out-not-0-sum": {
+    "long": "--out-not-0-sum",
+    "short": "-O",
+    "takes_arg": false,
+    "default": null,
+    "help": "Output summary only if the results count is not 0."
+  },
+  "--no-color": {
+    "long": "--no-color",
+    "short": "-C",
+    "takes_arg": false,
+    "default": "true",
+    "help": "No color for output (it's better to not add color if have subsequent matching or processing)."
+  },
+  "--no-percent": {
+    "long": "--no-percent",
+    "short": "-P",
+    "takes_arg": false,
+    "default": "true",
+    "help": "Not output percentages (Overwrite --percentage)."
+  },
+  "--head": {
+    "long": "--head",
+    "short": "-H",
+    "takes_arg": true,
+    "default": null,
+    "help": "Output top [N] rows of whole output if N > 0; Skip top [N] lines if N < 0; [N] = 0 means not output."
+  },
+  "--tail": {
+    "long": "--tail",
+    "short": "-T",
+    "takes_arg": true,
+    "default": null,
+    "help": "Output bottom [N] rows of whole output if N > 0; Skip bottom [N] lines if N < 0; [N] = 0 means not output."
+  },
+  "--jump-out": {
+    "long": "--jump-out",
+    "short": "-J",
+    "takes_arg": false,
+    "default": null,
+    "help": "Jump out (stop and exit) if has set -H [N] and already has output [N] lines."
+  },
+  "--switch-first": {
+    "long": "--switch-first",
+    "short": "-S",
+    "takes_arg": false,
+    "default": null,
+    "help": "Switch positions (first/latter roles) of 2 files or file/pipe (also will switch their Regex patterns)."
+  },
+  "--skip-last-empty": {
+    "long": "--skip-last-empty",
+    "short": "-Z",
+    "takes_arg": false,
+    "default": null,
+    "help": "Skip last empty line in first/latter file."
+  },
+  "--has-text": {
+    "long": "--has-text",
+    "short": "-x",
+    "takes_arg": true,
+    "default": null,
+    "help": "Line must contain this normal/plain text (Can use meanwhile: -t, -x, --nt, --nx)."
+  },
+  "--text-match": {
+    "long": "--text-match",
+    "short": "-t",
+    "takes_arg": true,
+    "default": null,
+    "help": "Regex pattern for line text must match (Can use meanwhile: -t, -x, --nt, --nx). Use -t value to filter even if used -e."
+  },
+  "--enhance": {
+    "long": "--enhance",
+    "short": "-e",
+    "takes_arg": true,
+    "default": null,
+    "help": "Regex pattern to color output, inferior to: -t -x. Use merged Regex value of \"(-t)|-e\" to enhance if used both -t and -e."
+  },
+  "--not-from-pipe": {
+    "long": "--not-from-pipe",
+    "short": "-Y",
+    "takes_arg": false,
+    "default": null,
+    "help": "Force reading from files other than pipe (to avoid reading pipe if running in another command)."
+  },
+  "--show-command": {
+    "long": "--show-command",
+    "short": "-c",
+    "takes_arg": false,
+    "default": null,
+    "help": "Show command line, you can append text for debug, or extraction after -c (if append text, -c and text must be last)."
+  },
+  "--help": {
+    "long": "--help",
+    "short": "-h",
+    "takes_arg": false,
+    "default": null,
+    "help": "See usage and examples below. More detail: https://github.com/qualiu/msr"
+  },
+  "--colors": {
+    "long": "--colors",
+    "short": null,
+    "takes_arg": true,
+    "default": null,
+    "help": "Set fore_back colors for -t/-e/-x;d/f/p;m/u like: 'Red' or 't=Red,x=Yellow,e=Green' or 't = red + Yellow_Blue, x = Cyan'."
+  },
+  "--keep-color": {
+    "long": "--keep-color",
+    "short": null,
+    "takes_arg": false,
+    "default": null,
+    "help": "Keep color of output result for Windows/MinGW - to be uniform color style with Cygwin/Linux/MacOS."
+  },
+  "--unix-slash": {
+    "long": "--unix-slash",
+    "short": null,
+    "takes_arg": true,
+    "default": null,
+    "help": "Set 1 to output uniform forward slash '/' on Windows + MinGW + Cygwin, like 'c:/' instead of '/c/' or '/cygdrive/c/'."
+  },
+  "--to-stderr": {
+    "long": "--to-stderr",
+    "short": null,
+    "takes_arg": false,
+    "default": null,
+    "help": "Output result to stderr. Default: result -> stdout, error/warn/info/verbose -> stderr."
+  },
+  "--sum": {
+    "long": "--sum",
+    "short": null,
+    "takes_arg": false,
+    "default": null,
+    "help": "Sum accumulative counts and percentages(if used -p) for each key/line."
+  },
+  "--not-warn-bom": {
+    "long": "--not-warn-bom",
+    "short": null,
+    "takes_arg": false,
+    "default": null,
+    "help": "Not output BOM warnings when reading BOM files which BOM header bytes != 0xEFBBBF."
+  },
+  "--timeout": {
+    "long": "--timeout",
+    "short": null,
+    "takes_arg": true,
+    "default": null,
+    "help": "Maximum waiting seconds to stop and exit. No limit if value <= 0. Default = 0.000 s."
+  },
+  "--nx": {
+    "long": "--nx",
+    "short": null,
+    "takes_arg": true,
+    "default": null,
+    "help": "Line must not contain normal/plain text: Exclude/Skip rows."
+  },
+  "--nt": {
+    "long": "--nt",
+    "short": null,
+    "takes_arg": true,
+    "default": null,
+    "help": "Regex pattern for lines must not match: Exclude/Skip rows."
+  },
+  "--exit": {
+    "long": "--exit",
+    "short": null,
+    "takes_arg": true,
+    "default": null,
+    "help": "Change return value, format: [Number] or [Regex-or-Math]-to-[Exit-Code], like: '1' or '-?\\d+-to-1' or 'lt0-to-1,255-to-1'."
+  },
+  "--verbose": {
+    "long": "--verbose",
+    "short": null,
+    "takes_arg": false,
+    "default": "true",
+    "help": "Show parsed arguments, return value, time zone, BOM rows and EXE path, etc."
+  }
+}

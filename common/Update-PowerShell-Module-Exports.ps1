@@ -19,10 +19,16 @@
 param(
     [Parameter(Mandatory = $true)][string] $SourcePaths,
     [string] $ExcludedFolderPattern = '^([\.\$]|(Release|Debug|objd?|bin|node_modules|static|dist|target|(Js)?Packages|\w+-packages?|wwwroot)$|__pycache__)',
-    [string] $ExcludeBuiltInVariablesPattern = "^\s*\`$(ErrorActionPreference|PSNativeCommandUseErrorActionPreference|PSDefaultParameterValues|PSModulePath|PSScriptRoot|PSCommandPath|MyInvocation|PSSenderInfo|PSEdition|PSHOME|PSUICulture|PSVersionTable|PID|PPID|PWD|HOME|OLDPWD|PWD|SHELL|SHLVL|USER|USERNAME|LOGNAME)\s*="
+    [string] $ExcludeBuiltInVariablesPattern = "^\s*\`$(ErrorActionPreference|PSNativeCommandUseErrorActionPreference|PSDefaultParameterValues|PSModulePath|PSScriptRoot|PSCommandPath|MyInvocation|PSSenderInfo|PSEdition|PSHOME|PSUICulture|PSVersionTable|PID|PPID|PWD|HOME|OLDPWD|PWD|SHELL|SHLVL|USER|USERNAME|LOGNAME)\s*=",
+    [string] $ExcludeSubPaths = '.Cmd/Open'
 )
 
 Import-Module "$PSScriptRoot/BasicOsUtils.psm1"
+
+# Build common exclude args for msr calls (--nd for folder regex, --xp for sub-path text)
+$excludeArgs = @()
+if (-not [string]::IsNullOrWhiteSpace($ExcludedFolderPattern)) { $excludeArgs += @('--nd', $ExcludedFolderPattern) }
+if (-not [string]::IsNullOrWhiteSpace($ExcludeSubPaths)) { $excludeArgs += @('--xp', $ExcludeSubPaths) }
 
 $EmptyTextForMsrReplace = Get-EmptyTextForMsrReplace $MyInvocation
 
@@ -41,10 +47,13 @@ function Remove-OldExports {
     $searchPattern = "(" + $commentsPattern + "|" + $exportPattern + ").*"
 
     Write-Output "`n$(Get-NowText) Clean up existing exports ..."
-    msr -rp $SourcePaths -f "\.psm1$" -it $searchPattern -o $EmptyTextForMsrReplace -R --nd $ExcludedFolderPattern -T 0
+    msr -rp $SourcePaths -f "\.psm1$" -it $searchPattern -o $EmptyTextForMsrReplace -R @excludeArgs -T 0
+
+    Write-Output "`n$(Get-NowText) Compress consecutive blank lines ..."
+    msr -rp $SourcePaths -f "\.psm1$" -S -t "(\r?\n){3,}" -o "\n\n" -R @excludeArgs -g -1 -M -T 0
 
     Write-Output "`n$(Get-NowText) Set one empty tail line ..."
-    msr -rp $SourcePaths -f "\.psm1$" -S -t "\s*$" -o "\n" -R --nd $ExcludedFolderPattern -M -T 0
+    msr -rp $SourcePaths -f "\.psm1$" -S -t "\s*$" -o "\n" -R @excludeArgs -M -T 0
 }
 
 function Write-Exports {
@@ -56,7 +65,7 @@ function Write-Exports {
     $lines += $ToolComment + $UnifiedToolName
     $lines += msr -t '^\$([A-Z]\w+)\s*=.*' -o "Export-ModuleMember -Variable \1" --nt $ExcludeBuiltInVariablesPattern -PAC -p $OneFilePath
     $variableCount = $LASTEXITCODE
-    $lines += msr -t "^\s*function\s+(\w+-\w+)\s*\{\s*$" -o "Export-ModuleMember -Function \1" -PAC -p $OneFilePath
+    $lines += msr -t "^\s*function\s+(\w+-\w+)\s*[\(\{].*" -o "Export-ModuleMember -Function \1" -PAC -p $OneFilePath
     $functionCount = $LASTEXITCODE
     if ($($variableCount + $functionCount) -eq 0) {
         return
@@ -69,7 +78,7 @@ function Write-Exports {
 function Find-IllegalFunctionNames {
     Write-Output "`n$(Get-NowText) Check illegal function name verbs ..."
     $pattern = "Export-ModuleMember\s+-Function"
-    msr -rp $SourcePaths -f "\.psm1$" --nd $ExcludedFolderPattern -it "^\s*$($pattern)" -M -C | nin $LegalVerbFile "$($pattern)\s+(\w+)" "^(\w+)" -i -w
+    msr -rp $SourcePaths -f "\.psm1$" @excludeArgs -it "^\s*$($pattern)" -M -C | nin $LegalVerbFile "$($pattern)\s+(\w+)" "^(\w+)" -i -w
     if ($LASTEXITCODE -gt 0) {
         Write-Output "`n$(Get-NowText) Found $($LASTEXITCODE) illegal function verbs as above." | msr -aPA -t "(Found.*?(\d+).*)"
         exit $LASTEXITCODE
@@ -78,7 +87,7 @@ function Find-IllegalFunctionNames {
 
 Get-Verb | ForEach-Object { Write-Output $_.Verb } | Out-File $LegalVerbFile -Encoding UTF8
 
-$files = msr -rp $SourcePaths -l -f "\.psm1$" -PAC --nd $ExcludedFolderPattern
+$files = msr -rp $SourcePaths -l -f "\.psm1$" -PAC @excludeArgs
 if ($LASTEXITCODE -lt 1) {
     Write-Output "$(Get-NowText) Not found PowerShell module files (*.psm1) in SourcePaths: $(SourcePaths)"
     exit 0

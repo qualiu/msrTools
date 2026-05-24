@@ -83,7 +83,7 @@ Do not invoke base aliases without a match filter.
 
 ```bash
 # Correct
-gfind-py -t "pattern"
+gfind-py -t "\bTargetSymbol\b"
 gfind-cs -x "TODO"
 
 # Risky (can flood output)
@@ -115,7 +115,7 @@ gfind-cs-ref MyService -x class -d Services
 Keep these as the default operational set for agents:
 
 - Discovery: `find-alias`
-- Scoped code search: `gfind-{ext}`, `gfind-code`, `gfind-file`, `gfind-small`
+- Scoped code search: `gfind-{ext}`, `gfind-small`, `gfind-file`
 - Git diff context: `gdm-l`, `gdm-ml`, `gdm-al`, `gdm-dl`, `gdm-nt`
 - History search: `git-find-content`, `git-find-log`, `git-find-commit`
 

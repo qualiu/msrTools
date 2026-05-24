@@ -36,6 +36,14 @@ foreach ($envName in @('MSR_EXIT', 'MSR_OUT_INDEX', 'MSR_OUT_FULL_PATH', 'MSR_SK
     [System.Environment]::SetEnvironmentVariable($envName, $null, [System.EnvironmentVariableTarget]::Process)
 }
 
+# Clear MSYS/MinGW env vars on Windows: msr.exe detects these and emits Unix-style paths (/c/...) which break
+# [Reflection.Assembly]::LoadFile and [IO.File]::Exists. Happens when pwsh is launched from Git Bash / MSYS shell.
+if ($IsWindowsOS) {
+    foreach ($envName in @('MSYSTEM', 'MSYSTEM_CARCH', 'MSYSTEM_CHOST', 'MSYSTEM_PREFIX', 'MINGW_PREFIX', 'MINGW_CHOST', 'MINGW_PACKAGE_PREFIX', 'MINGW_ROOT')) {
+        [System.Environment]::SetEnvironmentVariable($envName, $null, [System.EnvironmentVariableTarget]::Process)
+    }
+}
+
 Write-Host -ForegroundColor Green "$([DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss zzz')) Please don't forget to check/pull updates of this script repo (Do re-enter PowerShell if *.psm1 files updated)."
 
 function Test-IsLaunchedFromWindowsCMD {
@@ -315,6 +323,33 @@ function Get-ToolPathByName {
     return $(Get-Command $Name 2>$null).Source
 }
 
+function Test-Administrator {
+    # Returns $true if running with Administrator privileges (Windows) or as root (Linux/macOS).
+    # With -ThrowError, prints a red error and exits 1 if not privileged.
+    # -Reason adds context to the error line, e.g. 'installs cert to LocalMachine\My'.
+    param (
+        [switch] $ThrowError,
+        [string] $Reason = ''
+    )
+
+    $isAdmin = if ($IsWindowsOS) {
+        $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+        $p = New-Object System.Security.Principal.WindowsPrincipal($id)
+        $p.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+    } else {
+        (id -u) -eq 0
+    }
+
+    if ($isAdmin -or -not $ThrowError) { return $isAdmin }
+
+    $caller = if ($MyInvocation.PSCommandPath) { $MyInvocation.PSCommandPath } else { '<script>' }
+    $reasonSuffix = if ($Reason) { " ($Reason)" } else { '' }
+    $ts = Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff zzz'
+    Write-Host "$ts  [ERROR] $caller requires Administrator privileges$reasonSuffix." -ForegroundColor Red
+    Write-Host "$ts  [ERROR] Open a PowerShell terminal as Administrator (right-click > Run as administrator), then re-run." -ForegroundColor Red
+    Write-Host "$ts  [ERROR] Do NOT use 'Start-Process -Verb RunAs' (creates extra window, isolates stdout)." -ForegroundColor Red
+    exit 1
+}
 
 function Test-ToolExistsByName {
     param (
@@ -658,6 +693,7 @@ Export-ModuleMember -Function Test-CreateDirectory
 Export-ModuleMember -Function Test-DeleteFiles
 Export-ModuleMember -Function Update-PathEnvForExe
 Export-ModuleMember -Function Get-ToolPathByName
+Export-ModuleMember -Function Test-Administrator
 Export-ModuleMember -Function Test-ToolExistsByName
 Export-ModuleMember -Function Test-ToolExistsThrowError
 Export-ModuleMember -Function Update-PathEnvToTrimmedAndCompacted

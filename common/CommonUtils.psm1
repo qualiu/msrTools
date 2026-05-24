@@ -153,7 +153,6 @@ function Get-NowForFileName {
     return Get-TimeTextForFileName $([DateTimeOffset]::Now) -Format $Format -AsVarName $AsVarName
 }
 
-
 function Add-CommonLogInfo {
     param (
         [Parameter(Mandatory = $true)] $NameValueMap
@@ -267,7 +266,6 @@ function Get-GitRepoName {
     Pop-Location
     return $repoName
 }
-
 
 <#
 .DESCRIPTION
@@ -1472,7 +1470,6 @@ function Get-ProcessByFilter {
     ps -ef | msr $callArgs
 }
 
-
 function Stop-ProcessByFilter {
     param (
         [string] $MatchPattern,
@@ -1635,6 +1632,7 @@ class BeginEndLogger : System.IDisposable {
     }
 
     [void] SetInfo($invocation, [TimeLogLevel] $LogLevel, [bool] $WriteInfoNow = $true, [bool] $ShowFinalTimeCost = $true) {
+        $this.BeginTime = [System.DateTimeOffset]::Now
         $command = Get-QuotedArg $invocation.MyCommand.Source
         foreach ($key in $invocation.BoundParameters.Keys) {
             $value = $invocation.BoundParameters[$key]
@@ -1721,6 +1719,15 @@ class BeginEndLogger : System.IDisposable {
         }
     }
 
+    [void] ShowWarningOrMessage([string] $Text, [bool] $IsWarning) {
+        if ($IsWarning) {
+            $this.ShowMessage($Text)
+        }
+        else {
+            $this.ShowMessage($Text)
+        }
+    }
+
     [void] ShowErrorOrInfo([string] $Text, [bool] $IsError, [bool] $ThrowError = $true) {
         if ($IsError) {
             $this.ShowError($Text, $ThrowError)
@@ -1761,6 +1768,19 @@ function New-BeginEndLogger {
 
 $TimeLogger = New-BeginEndLogger $MyInvocation
 # Install-JsonNewtonDll -ThrowError $false
+
+function Show-ErrorExit {
+    param (
+        [Parameter(Mandatory = $true)] [string] $Message,
+        [int] $ExitCode = 1
+    )
+    Show-Error $Message
+    exit $ExitCode
+}
+
+function Test-TruthValue([string]$value) {
+    return "$value".Trim() -match '^(1|true|yes)$'
+}
 
 # Auto generated exports by Update-PowerShell-Module-Exports.ps1
 Export-ModuleMember -Variable ShouldQuoteArgRegex
@@ -1832,3 +1852,5 @@ Export-ModuleMember -Function Stop-ProcessByFilter
 Export-ModuleMember -Function Get-AddableMsrArgs
 Export-ModuleMember -Function Get-TimeLogLevel
 Export-ModuleMember -Function New-BeginEndLogger
+Export-ModuleMember -Function Show-ErrorExit
+Export-ModuleMember -Function Test-TruthValue

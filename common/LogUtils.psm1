@@ -291,6 +291,7 @@ if (-not $_LogClient) {
 Export-ModuleMember -Variable IsInCompanyDomains
 Export-ModuleMember -Variable IsAdmin
 Export-ModuleMember -Variable LocalAppInsightsEnvName
+Export-ModuleMember -Function Get-MetricsPropertyKey
 Export-ModuleMember -Function Install-Nuget
 Export-ModuleMember -Function Write-AppEvent
 Export-ModuleMember -Function Write-AppMessage
