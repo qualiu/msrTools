@@ -67,3 +67,30 @@ Follow examples in [custom-alias/settings.json](./custom-alias/settings.json) to
 
 - Type [reload-env](https://marketplace.visualstudio.com/items?itemName=qualiu.vscode-msr#additional-tips) for any new tools (like jq) if you failed to found.
 - Type [add-user-path](https://marketplace.visualstudio.com/items?itemName=qualiu.vscode-msr#additional-tips) `{new-tool-folder}` if you still cannot find the new tool.
+
+### Fix Chinese/CJK Command-Line Arguments for msr/nin on Non-UTF-8 Windows
+
+On Windows whose ANSI code page (ACP) is not 65001 (e.g. `1252`), `msr`/`nin` receive ANSI command-line arguments, so non-ASCII patterns (like a Chinese `-t`/`-x` value) are truncated to `?` before the tool sees them — giving 0 matches or a regex error. This also breaks **AI Agents** that search Chinese (CJK) text via `gfind-*`/`find-*`/`msr`/`nin`.
+
+[common/Repair-MsrNinUtf8ArgsOnWindowsNonUtf8Acp.ps1](./common/Repair-MsrNinUtf8ArgsOnWindowsNonUtf8Acp.ps1) embeds a `<activeCodePage>UTF-8</activeCodePage>` manifest into `msr.exe`/`nin.exe` (via the Windows SDK `mt.exe`, auto-located) so those processes parse their command line as UTF-8 — without changing the system locale. Pure-ASCII arguments stay byte-identical, so existing scripts are unaffected, and re-running is idempotent (same MD5).
+
+It patches the `msr.exe`/`nin.exe` binaries themselves, so every wrapper that shells out to them (the `gfind-*` / `find-*` scripts and any alias built on `msr`/`nin`) is fixed in one shot — there is nothing extra to patch per wrapper.
+
+```powershell
+# Report current state (dry-run, no changes)
+pwsh -NoProfile -File common/Repair-MsrNinUtf8ArgsOnWindowsNonUtf8Acp.ps1
+
+# Probe only: report FIXED / BROKEN for CJK search
+pwsh -NoProfile -File common/Repair-MsrNinUtf8ArgsOnWindowsNonUtf8Acp.ps1 -VerifyOnly 1
+
+# Patch msr + nin on PATH (auto-frees running holders; may raise UAC)
+pwsh -NoProfile -File common/Repair-MsrNinUtf8ArgsOnWindowsNonUtf8Acp.ps1 -Apply 1
+
+# Patch msr + nin, auto-installing the Windows SDK first if mt.exe is missing
+pwsh -NoProfile -File common/Repair-MsrNinUtf8ArgsOnWindowsNonUtf8Acp.ps1 -Apply 1 -AutoInstallSdk 1
+
+# Roll back from the .utf8bak backup
+pwsh -NoProfile -File common/Repair-MsrNinUtf8ArgsOnWindowsNonUtf8Acp.ps1 -Restore 1
+```
+
+Works from Git Bash and `pwsh -Command`. CJK arguments launched from `cmd.exe`/`.bat`/`.cmd` are corrupted by the parent before reaching `msr`, so pass the pattern via a UTF-8 file there: `msr -f "@pattern.txt"`.

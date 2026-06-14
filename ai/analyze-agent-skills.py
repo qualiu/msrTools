@@ -364,12 +364,19 @@ _ALIASES_WITH_BUILTIN_C = re.compile(r'^(find-alias|(?:g?find)-top-\S+)$')
 
 
 def _r39(cmd):
-    """Every msr/nin/gfind-*/find-* invocation must have -C (or any short-bundle
-    containing C: -PIC, -IC, -PAC, -PICc, ...) or --no-color. ANSI color leaks
-    into agent output and breaks downstream regex / readability. -C <digit>
-    is grep-style context misuse (F12), NOT real --no-color.
+    """The LAST pipe stage must have -C (or any short-bundle containing C:
+    -PIC, -IC, -PAC, -PICc, ...) or --no-color, because only its stdout reaches
+    the terminal/agent and would carry ANSI color. msr/nin auto-disable color
+    when stdout is not a TTY, so an upstream stage feeding a pipe (msr ... | nin
+    ...) does NOT leak color -- only the final stage does. -C <digit> is
+    grep-style context misuse (F12), NOT real --no-color.
     Aliases find-alias / (g)find-top-* already bundle -C internally."""
-    for seg_s, _op in _iter_command_segments(cmd):
+    pipes = _split_pipes(cmd)
+    last = pipes[-1] if pipes else cmd
+    for seg, _op in _split_top_level_logical(last):
+        seg_s = seg.strip()
+        if not seg_s:
+            continue
         m_tool = _TOOL_START_RE.match(seg_s)
         if not m_tool:
             continue
@@ -382,11 +389,11 @@ def _r39(cmd):
             continue
         if _C_BUNDLE_TOKEN.search(no_grep_C):
             continue
-        return (f'{tool} without -C (or -PIC / -IC / -PAC / --no-color): '
+        return (f'{tool} (final pipe stage -> terminal) without -C (or -PIC / -IC / -PAC / --no-color): '
                 f'ANSI color leaks into stdout, breaks downstream regex and agent readability. '
                 f'Add -C, or bundle into -PIC (no-path + no-extra + no-color) / -IC / -PAC / -PICc. '
                 f'Note: -C <integer> is grep-style context (F12 misuse), NOT --no-color; '
-                f'use -U N / -D N for context.')
+                f'use -U N / -D N for context. Upstream stages feeding a pipe auto-disable color (non-TTY) and are exempt.')
     return None
 
 

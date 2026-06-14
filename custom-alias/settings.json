@@ -86,11 +86,6 @@
             "description": "Fetch origin/main branch. Example: gfa --prune"
         },
         {
-            "aliasName": "gdm",
-            "aliasBody": "echo git difftool origin/master $* | msr -XM --to-stderr --keep-color",
-            "description": "Launch GUI difftool (configured in git) to compare 'changed files' of current branch with origin/master."
-        },
-        {
             "aliasName": "gda",
             "aliasBody": "echo git difftool origin/main $* | msr -XM --to-stderr --keep-color",
             "description": "Launch GUI difftool (configured in git) to compare 'changed files' of current branch with origin/main."
@@ -106,34 +101,14 @@
             "description": "Launch GUI difftool (configured in git) to compare 'newly added files' of current branch with origin/main."
         },
         {
-            "aliasName": "gdm-al",
-            "aliasBody": "echo git diff origin/master --name-only --diff-filter=A $* | msr -XM --to-stderr --keep-color",
-            "description": "Show added new file path list between current branch and origin/master. Example: gdm-al  or  gdm-al *.cpp"
-        },
-        {
-            "aliasName": "gdm-l",
-            "aliasBody": "echo git diff origin/master --name-only $* | msr -XM --to-stderr --keep-color",
-            "description": "Show different file path list between current branch and origin/master. Example: gdm-l  or  gdm-l *.cpp"
-        },
-        {
             "aliasName": "gda-al",
             "aliasBody": "echo git diff origin/main --name-only --diff-filter=A $* | msr -XM --to-stderr --keep-color",
             "description": "Show added new file path list between current branch and origin/main. Example: gdm-l  or  gdm-l *.cpp"
         },
         {
-            "aliasName": "gdm-m",
-            "aliasBody": "echo git difftool origin/master --diff-filter=M $* | msr -XM --to-stderr --keep-color",
-            "description": "Launch GUI difftool (configured in git) to compare 'modified files' of current branch with origin/master. Example: gdm-m *.cpp"
-        },
-        {
             "aliasName": "gda-m",
             "aliasBody": "echo git difftool origin/main --diff-filter=M $* | msr -XM --to-stderr --keep-color",
             "description": "Launch GUI difftool (configured in git) to compare 'modified files' of current branch with origin/main.  Example: gda-m *.cpp"
-        },
-        {
-            "aliasName": "gdm-ml",
-            "aliasBody": "echo git diff origin/master --name-only --diff-filter=M $* | msr -XM --to-stderr --keep-color",
-            "description": "Show changed file path list between current branch and origin/master. Example: gdm-ml  or  gdm-ml *.cpp"
         },
         {
             "aliasName": "gda-ml",
@@ -154,11 +129,6 @@
             "aliasName": "gda-d",
             "aliasBody": "echo git difftool origin/main --diff-filter=D $* | msr -XM --to-stderr --keep-color",
             "description": "Launch GUI difftool (configured in git) to compare 'deleted files' of current branch with origin/main. Example: gda-d *.cpp"
-        },
-        {
-            "aliasName": "gdm-dl",
-            "aliasBody": "echo git diff origin/master --name-only --diff-filter=D $* | msr -XM --to-stderr --keep-color",
-            "description": "Show deleted file path list between current branch and origin/master."
         },
         {
             "aliasName": "gda-dl",
@@ -291,16 +261,6 @@
             "description": "Attach to a screen session or create a new one on Linux server."
         },
         {
-            "aliasName": "gdc",
-            "aliasBody": "git difftool origin/$(git rev-parse --abbrev-ref HEAD) $*",
-            "description": "Launch GUI tool to compare changes between {current-branch} and origin/{current-branch}. Example: gdc  or  gdc *.cpp"
-        },
-        {
-            "aliasName": "gdc-l",
-            "aliasBody": "git diff origin/$(git rev-parse --abbrev-ref HEAD) --name-only $*",
-            "description": "Show different file path list between {current-branch} and origin/{current-branch}. Example: gdc-l  or  gdc-l *.cpp"
-        },
-        {
             "aliasName": "gdc-al",
             "aliasBody": "git diff origin/$(git rev-parse --abbrev-ref HEAD) --name-only --diff-filter=A $*",
             "description": "Show added new file path list between {current-branch} and origin/{current-branch}. Example: gdc-al  or  gdc-al *.cpp"
@@ -396,16 +356,6 @@
             "aliasName": "git-fb",
             "aliasBody": "PowerShell -Command \"& {param([Parameter(Mandatory=1)][string]$DaysBack, [Parameter(Mandatory=1)][string]$MatchBranchPattern, $ExcludeBranchPattern='No-Exclude'); $SkipOldTime = (Get-Date).AddDays(-$DaysBack); $commands = @(); Write-Host 'Run this first if you need fetch branches: git fetch origin --unshallow' -ForegroundColor Green; $nameOfBranches = git branch -r | Where-Object { $_ -match $MatchBranchPattern -and $_ -notmatch $ExcludeBranchPattern } | ForEach-Object { $_.Trim() };  foreach ($name in $nameOfBranches) { $commitTimeText = git log -n 1 --pretty=format:%cd $name; $commitTime = [DateTime]::Parse($commitTimeText);  if ($commitTime -gt $SkipOldTime) { $commands += \\\"git log -n 2 $name ^| msr -aPA -H 20 -e Date.+ --exit 0\\\"; } } $commands | msr -XMI } \" $*",
             "description": "Find remote git branches by Date + basename prefix (Seems variable names cannot starts with 'b' like '$branchName' in PowerShell alias). Example: git-fb 8 mike/ , git-fb 8 title.*words"
-        },
-        {
-            "aliasName": "gdc",
-            "aliasBody": "for /f \"tokens=*\" %a in ('git rev-parse --abbrev-ref HEAD') do @echo git difftool origin/%a $* | msr -XM --keep-color",
-            "description": "Launch GUI tool to compare changes between {current-branch} and origin/{current-branch}. Example: gdc  or  gdc *.cpp"
-        },
-        {
-            "aliasName": "gdc-l",
-            "aliasBody": "for /f \"tokens=*\" %a in ('git rev-parse --abbrev-ref HEAD') do @echo git diff origin/%a --name-only $* | msr -XM --keep-color",
-            "description": "Show different file path list between {current-branch} and origin/{current-branch}. Example: gdc-l  or  gdc-l *.cpp"
         },
         {
             "aliasName": "gdc-al",
