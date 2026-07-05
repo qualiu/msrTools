@@ -183,6 +183,7 @@ $NoSummaryBool = $NoSummary -imatch "1|true|yes|on"
 $OutToStderrForHeaderSummaryBool = $OutToStderrForHeaderSummary -imatch "1|true|yes|on"
 
 $script:MatchedProcessCount = 0
+$script:Stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
 # Define global string comparison type based on IgnoreCase setting
 $ComparisonType = if ($IgnoreCaseBool) { [System.StringComparison]::OrdinalIgnoreCase } else { [System.StringComparison]::Ordinal }
@@ -217,43 +218,27 @@ $ExcludeCommandLineRegex = New-RegexObject -Pattern $ExcludeCommandLinePattern -
 $MatchAllRegex = New-RegexObject -Pattern $MatchAllPattern -IgnoreCase $IgnoreCaseBool
 $ExcludeAllRegex = New-RegexObject -Pattern $ExcludeAllPattern -IgnoreCase $IgnoreCaseBool
 
-# Function to check if parent/self process should be excluded based on tool execution patterns
-function Test-ShouldExcludeSelfProcess {
+function Test-IsToolProcess {
     param(
         [PSCustomObject]$Process
     )
 
-    # Check if it's a msr.exe process (msr tool used by our scripts)
     if ($Process.Name -imatch '^(msr)(\.exe)?$') {
         return $true
     }
 
-    # Check if it's a cmd.exe process that is executing our scripts
-    if ($Process.Name -imatch '^(cmd)(\.exe)?$' -and -not [string]::IsNullOrEmpty($Process.CommandLine)) {
-        if ($Process.CommandLine -match "\b(psall\.bat|pskill\.bat)\b") {
-            return $true
-        }
+    if ($Process.Name -imatch '^(cmd|bash|sh)(\.exe)?$' -and -not [string]::IsNullOrEmpty($Process.CommandLine)) {
+        return $Process.CommandLine -match '((psall|pskill)(\.bat)?|PsTool\.ps1)'
     }
 
-    # Check if it's PowerShell executing PsTool.ps1
-    if (($Process.Name -imatch '^(pwsh|PowerShell)(\.exe)?$') -and
-        -not [string]::IsNullOrEmpty($Process.CommandLine)) {
-        if ($Process.CommandLine -match "\b(PsTool\.ps1)\b") {
-            return $true
-        }
+    if ($Process.Name -imatch '^(pwsh|PowerShell)(\.exe)?$' -and -not [string]::IsNullOrEmpty($Process.CommandLine)) {
+        return $Process.CommandLine -match 'PsTool\.ps1'
     }
 
     return $false
 }
 
-# Function to get parent/self processes that should be excluded from results.
-# Walks up the ancestor chain from CurrentPid:
-#   - Unconditionally excludes the immediate parent (level 0, e.g. cmd.exe running "call pwsh PsTool.ps1")
-#   - For higher ancestors, excludes only if Test-ShouldExcludeSelfProcess returns true
-#     (e.g. cmd.exe /c "psall.bat ...", msr.exe, PowerShell running PsTool.ps1)
-#   - At each excluded ancestor, also excludes its other tool-process children (siblings)
-#   - Stops when a non-tool ancestor is found (the user's terminal)
-function Get-ExcludedSelfProcessIds {
+function Get-CurrentInvocationProcessIds {
     param(
         [array]$AllProcesses,
         [int]$CurrentPid
@@ -264,7 +249,7 @@ function Get-ExcludedSelfProcessIds {
 
     $currentId = $CurrentPid
     $isFirstLevel = $true
-    $maxLevels = 6  # Safety limit to prevent infinite loops
+    $maxLevels = 16
 
     for ($level = 0; $level -lt $maxLevels; $level++) {
         $proc = $AllProcesses | Where-Object { $_.ProcessId -eq $currentId } | Select-Object -First 1
@@ -274,30 +259,30 @@ function Get-ExcludedSelfProcessIds {
         $parentProc = $AllProcesses | Where-Object { $_.ProcessId -eq $parentId } | Select-Object -First 1
         if (-not $parentProc) { break }
 
-        # Immediate parent is always excluded; higher ancestors only if they are tool processes
-        $shouldExcludeParent = $isFirstLevel -or (Test-ShouldExcludeSelfProcess -Process $parentProc)
-
+        $shouldExcludeParent = $isFirstLevel -or (Test-IsToolProcess -Process $parentProc)
         if ($shouldExcludeParent) {
             [void]$excludePIDs.Add($parentId)
-
-            # Exclude siblings (other children of parent) that are tool processes
-            $AllProcesses | Where-Object { $_.ParentProcessId -eq $parentId -and $_.ProcessId -ne $currentId } | ForEach-Object {
-                if (Test-ShouldExcludeSelfProcess -Process $_) {
-                    [void]$excludePIDs.Add($_.ProcessId)
-                }
-            }
-
-            $currentId = $parentId
-            $isFirstLevel = $false
         }
-        else {
-            # Non-tool ancestor found: exclude its tool-process children (e.g. cmd.exe /c "psall.bat"), then stop
-            $AllProcesses | Where-Object { $_.ParentProcessId -eq $parentId } | ForEach-Object {
-                if (Test-ShouldExcludeSelfProcess -Process $_) {
-                    [void]$excludePIDs.Add($_.ProcessId)
-                }
+
+        $AllProcesses | Where-Object { $_.ParentProcessId -eq $parentId -and $_.ProcessId -ne $currentId } | ForEach-Object {
+            if (Test-IsToolProcess -Process $_) {
+                [void]$excludePIDs.Add($_.ProcessId)
             }
-            break
+        }
+
+        $currentId = $parentId
+        $isFirstLevel = $false
+    }
+
+    $queue = [System.Collections.Generic.Queue[int]]::new()
+    foreach ($id in @($excludePIDs)) { $queue.Enqueue($id) }
+    while ($queue.Count -gt 0) {
+        $parentId = $queue.Dequeue()
+        $AllProcesses | Where-Object { $_.ParentProcessId -eq $parentId } | ForEach-Object {
+            if (Test-IsToolProcess -Process $_ -and -not $excludePIDs.Contains($_.ProcessId)) {
+                [void]$excludePIDs.Add($_.ProcessId)
+                $queue.Enqueue($_.ProcessId)
+            }
         }
     }
 
@@ -526,13 +511,14 @@ function Out-ProcessSummary {
         [int]$DescendantCount = 0
     )
     $matchedWord = if ($MatchedCount -eq 1) { "process" } else { "processes" }
+    $cost = " Cost {0:N3} s" -f $script:Stopwatch.Elapsed.TotalSeconds
     if ($DescendantCount -gt 0) {
         $descendantWord = if ($DescendantCount -eq 1) { "descendant" } else { "descendants" }
         $hint = if (-not $ShowDescendantsBool) { " (Use -SD to show all)" } else { "" }
-        Out-KeyMessage -Message "$Verb $MatchedCount matched $matchedWord with $DescendantCount $descendantWord.$hint" -Type "success"
+        Out-KeyMessage -Message "$Verb $MatchedCount matched $matchedWord with $DescendantCount $descendantWord.$cost$hint" -Type "success"
     }
     else {
-        Out-KeyMessage -Message "$Verb $MatchedCount matched $matchedWord." -Type "success"
+        Out-KeyMessage -Message "$Verb $MatchedCount matched $matchedWord.$cost" -Type "success"
     }
 }
 
@@ -663,12 +649,12 @@ function Get-MatchedProcesses {
             $processes = $processes | Where-Object { Test-ProcessAllFieldsMatch -Process $_ -Text $ExcludeAllText -IsExclusive $true }
         }
 
-        # Get processes to exclude (self and related tool processes)
-        $excludePIDs = Get-ExcludedSelfProcessIds -AllProcesses $allProcesses -CurrentPid $PID
-
-        # Filter out excluded processes
+        $excludePIDs = Get-CurrentInvocationProcessIds -AllProcesses $allProcesses -CurrentPid $PID
+        $processes = $processes | Where-Object { $_.ProcessId -notin $excludePIDs }
         $processes = $processes | Where-Object {
-            $_.ProcessId -notin $excludePIDs
+            -not ($_.Name -imatch '^(cmd|bash|sh)(\.exe)?$' -and
+                -not [string]::IsNullOrEmpty($_.CommandLine) -and
+                $_.CommandLine -match '((psall|pskill)(\.bat)?|PsTool\.ps1)')
         }
 
         # Exclude by plain process name (case-sensitive or case-insensitive based on IgnoreCaseBool parameter)
@@ -736,6 +722,8 @@ function Stop-Processes {
         Out-KeyMessage -Message "No matching processes found to terminate." -Type "warning"
         return
     }
+
+    $processes = Get-FilteredByHeadTail -Processes $processes -Head $Head -Tail $Tail
 
     # Sort processes by ProcessId for consistent output
     $processes = $processes | Sort-Object ProcessId | Where-Object { $_.ProcessId -gt 0 }

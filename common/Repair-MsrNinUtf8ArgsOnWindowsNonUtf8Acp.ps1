@@ -6,6 +6,9 @@
     On Windows where the registry ANSI code page (ACP) is not 65001 (e.g. 1252), msr/nin use an ANSI main() entry, so non-ASCII command-line args
     (Chinese -t/-x patterns) are truncated to '?' before the tool sees them -> 0 matches or a regex crash.
 
+    Newer msr/nin builds read the command line as UTF-16 (GetCommandLineW) and handle CJK argv natively; they also accept --version. This tool uses
+    --version as a proxy: if every target answers --version, it needs no patch and the whole mt.exe discovery/download path is skipped.
+
     Fix without touching the system locale: embed a manifest declaring <activeCodePage>UTF-8</activeCodePage> into resource #1 of each exe via the
     Windows SDK mt.exe. That makes those single processes read their command line as UTF-8. Pure-ASCII args are byte-identical, so existing scripts
     that call msr/nin are unaffected.
@@ -29,7 +32,8 @@
     '1'/'true'/'yes' = run the CJK probe and report FIXED/BROKEN; make no changes.
 
 .PARAMETER Restore
-    '1'/'true'/'yes' = restore each exe from its .utf8bak backup, then stop.
+    '1'/'true'/'yes' = restore each exe from its .utf8bak backup, then stop. If an exe answers --version (a newer build with native CJK argv
+    handling), the manifest patch is inert -> the exe is left untouched and its stale .utf8bak is deleted instead of overwriting a good binary.
 
 .PARAMETER NoKill
     '1'/'true'/'yes' = do NOT auto-kill running msr/nin before patching (default: kill so mt.exe can write the resource).
@@ -47,8 +51,10 @@
     Explicit target exe path(s). Overrides auto-locating msr+nin on PATH. Repeatable.
 
 .PARAMETER AutoInstallSdk
-    '1'/'true'/'yes' = when mt.exe is not found anywhere, attempt to install the Windows SDK via winget (preferred) or the standalone installer.
-    Requires admin rights for the installer fallback. Default (empty) = do not install, just error out as before.
+    '1'/'true'/'yes' = when mt.exe is not found anywhere, attempt to install the Windows SDK via the standalone installer (preferred) or winget.
+    Requires admin rights. The standalone installer is downloaded into a fresh, ACL-restricted temp dir and is executed only after its
+    Authenticode signature is verified as Valid + signed by Microsoft Corporation (re-checked immediately before launch); the dir is deleted
+    afterwards. Default (empty) = do not install, just error out as before.
 
 .PARAMETER MtPath
     Explicit path to mt.exe. Overrides dynamic Windows SDK discovery.
@@ -92,8 +98,47 @@ param(
     [string] $AutoInstallSdk = ''
 )
 
-Import-Module "$PSScriptRoot/BasicOsUtils.psm1"
-Import-Module "$PSScriptRoot/CommonUtils.psm1"
+# Self-contained equivalents of the few functions used from BasicOsUtils.psm1 / CommonUtils.psm1, so importing
+# those modules (which carry a Get-FileFromUrl path that can download old msr/nin from GitHub) is not needed.
+$Utf8NoBomEncoding = New-Object System.Text.UTF8Encoding $false
+
+function Test-TruthValue([string] $value) {
+    return "$value".Trim() -match '^(1|true|yes)$'
+}
+
+function Show-Info([string] $Message) {
+    $ts = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    Write-Host "$ts $Message" -ForegroundColor Green
+}
+
+function Show-Warning([string] $Message) {
+    $ts = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    [Console]::Error.WriteLine("$ts [WARN] $Message")
+}
+
+function Show-Error([string] $Message) {
+    $ts = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    [Console]::Error.WriteLine("$ts [ERROR] $Message")
+}
+
+function Test-Administrator {
+    $id = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $p = New-Object Security.Principal.WindowsPrincipal($id)
+    return $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+function Get-ToolPathByName([string] $Name) {
+    return (Get-Command $Name -ErrorAction SilentlyContinue).Source
+}
+
+function Save-TextToFileUtf8NoBOM {
+    param([Parameter(Mandatory = $true)] [string] $FilePath, [string] $AllText)
+    [IO.File]::WriteAllText($FilePath, $AllText, $Utf8NoBomEncoding)
+}
+
+function Test-CreateDirectory([string] $Folder) {
+    if (-not [IO.Directory]::Exists($Folder)) { [void] [IO.Directory]::CreateDirectory($Folder) }
+}
 
 $script:IsApply = Test-TruthValue $Apply
 $script:IsVerifyOnly = Test-TruthValue $VerifyOnly
@@ -141,7 +186,7 @@ $ApplicationBlock = @'
 '@
 
 function Get-RegistryAcp {
-    # The ANSI codepage the Win32 ANSI entry uses (e.g. 1252). 65001 means UTF-8 Beta is on.
+    # The system ANSI codepage (e.g. 1252); 65001 means the OS is already UTF-8.
     try {
         return [string](Get-ItemPropertyValue -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Nls\CodePage' -Name 'ACP' -ErrorAction Stop)
     }
@@ -184,6 +229,50 @@ function Select-BestMtFromRoot {
     return ''
 }
 
+function New-RestrictedTempDir {
+    # Create a fresh, unpredictable temp dir whose ACL is reset to current-user + SYSTEM + Administrators only
+    # (inheritance disabled, all inherited rules stripped). This denies other non-admin local users any access,
+    # which is what lets us trust a file we drop here between download, signature check, and elevated execution.
+    $suffix = '{0}_{1}' -f $PID, [Diagnostics.Stopwatch]::GetTimestamp()
+    $dir = Join-Path $env:TEMP ('msr_sdk_' + $suffix)
+    [void] [IO.Directory]::CreateDirectory($dir)
+
+    try {
+        # PowerShell 7 drops the [IO.Directory]/[DirectoryInfo] SetAccessControl methods, so apply the ACL via Set-Acl.
+        $acl = New-Object Security.AccessControl.DirectorySecurity
+        $acl.SetAccessRuleProtection($true, $false)  # protect = stop inheritance; $false = do NOT copy inherited rules
+        $rights = [Security.AccessControl.FileSystemRights]::FullControl
+        $inherit = [Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit'
+        $prop = [Security.AccessControl.PropagationFlags]::None
+        $allow = [Security.AccessControl.AccessControlType]::Allow
+        foreach ($idRef in @(
+                [Security.Principal.WindowsIdentity]::GetCurrent().User,
+                (New-Object Security.Principal.SecurityIdentifier ([Security.Principal.WellKnownSidType]::LocalSystemSid, $null)),
+                (New-Object Security.Principal.SecurityIdentifier ([Security.Principal.WellKnownSidType]::BuiltinAdministratorsSid, $null)))) {
+            $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule $idRef, $rights, $inherit, $prop, $allow))
+        }
+        Set-Acl -LiteralPath $dir -AclObject $acl
+    }
+    catch {
+        # If the ACL cannot be locked down, do not hand back an under-protected dir: remove it and rethrow.
+        Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
+        throw
+    }
+    return $dir
+}
+
+function Test-MicrosoftAuthenticode {
+    # $true only if the file carries a Valid Authenticode signature whose signer is Microsoft Corporation.
+    param([string] $FilePath)
+    $sig = Get-AuthenticodeSignature -FilePath $FilePath
+    $signerSubject = if ($sig.SignerCertificate) { $sig.SignerCertificate.Subject } else { '' }
+    $ok = ($sig.Status -eq 'Valid') -and ($signerSubject -match 'O=Microsoft Corporation')
+    if (-not $ok) {
+        Show-Warning "  -> installer signature not a valid Microsoft Authenticode (status=$($sig.Status), signer='$signerSubject')."
+    }
+    return $ok
+}
+
 function Install-WindowsSdkForMt {
     # Attempt to install Windows SDK so mt.exe becomes available. Strategy: standalone installer first (silent, OptionId.DesktopCPP<arch> +
     # OptionId.SigningTools), winget --id Microsoft.WindowsSDK as fallback. Returns the path to mt.exe on success, or '' on failure.
@@ -198,10 +287,15 @@ function Install-WindowsSdkForMt {
     # -- Try standalone SDK installer first (winget SDK packages still pop interactive EULA).
     # This fwlink is Microsoft's evergreen redirect to the latest Windows SDK web installer.
     $installerUrl = 'https://go.microsoft.com/fwlink/?linkid=2272610'
-    $installerPath = Join-Path $env:TEMP 'winsdksetup.exe'
 
-    if (-not [IO.File]::Exists($installerPath)) {
-        Show-Info "  -> downloading SDK installer to $installerPath ..."
+    # Download into a fresh ACL-locked dir (no predictable shared %TEMP% path, no reuse of a pre-existing file)
+    # so a local attacker cannot pre-plant or swap the installer. Removed in finally.
+    $dlDir = New-RestrictedTempDir
+    try {
+        $installerPath = Join-Path $dlDir 'winsdksetup.exe'
+        # Log only the leaf name: the full path is under %TEMP% and carries the local username, which would
+        # leak a user identifier into CI/build logs if stdout is captured centrally.
+        Show-Info "  -> downloading SDK installer ($(Split-Path -Leaf $installerPath)) ..."
         try {
             [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
             (New-Object Net.WebClient).DownloadFile($installerUrl, $installerPath)
@@ -209,22 +303,10 @@ function Install-WindowsSdkForMt {
         catch {
             Show-Error "  -> download failed: $_"
         }
-    }
 
-    if ([IO.File]::Exists($installerPath)) {
-        # Verify Authenticode before elevated execution: guards against a tampered download or a
-        # planted/stale %TEMP%\winsdksetup.exe. Require a Valid signature from Microsoft; otherwise
-        # delete the file and fall through to the winget path.
-        $sig = Get-AuthenticodeSignature -FilePath $installerPath
-        $signerSubject = if ($sig.SignerCertificate) { $sig.SignerCertificate.Subject } else { '' }
-        $isMicrosoftSigned = ($sig.Status -eq 'Valid') -and ($signerSubject -match 'O=Microsoft Corporation')
-        if (-not $isMicrosoftSigned) {
-            Show-Warning "  -> installer signature not a valid Microsoft Authenticode (status=$($sig.Status), signer='$signerSubject'); deleting and skipping execution."
-            Remove-Item -LiteralPath $installerPath -Force -ErrorAction SilentlyContinue
-        }
-        else {
+        if ([IO.File]::Exists($installerPath) -and (Test-MicrosoftAuthenticode $installerPath)) {
             # mt.exe ships in the Desktop C++ tools feature (NOT SigningTools, which only has signtool.exe).
-            # Pick the feature matching the host arch; include SigningTools too because it's small and useful for adjacent workflows.
+            # Pick the feature matching the host arch; SigningTools is included as a small useful extra.
             $arches = Get-HostArchPreference
             $cppFeature = switch ($arches[0]) {
                 'arm64' { 'OptionId.DesktopCPParm64' }
@@ -233,13 +315,20 @@ function Install-WindowsSdkForMt {
             }
             $installArgs = @('/features', $cppFeature, 'OptionId.SigningTools', '/quiet', '/norestart', '/ceip', 'off')
 
+            # Re-verify Authenticode immediately before elevated execution (close the check-to-use TOCTOU window).
             Show-Info "  -> running SDK installer (admin, features=$cppFeature + SigningTools, quiet) ..."
-            try {
-                $proc = Start-Process -FilePath $installerPath -ArgumentList $installArgs -Wait -PassThru -NoNewWindow -ErrorAction Stop
-            }
-            catch {
-                Show-Error "  -> failed to start installer: $_"
+            if (-not (Test-MicrosoftAuthenticode $installerPath)) {
+                Show-Warning '  -> signature changed between check and execution; aborting installer.'
                 $proc = $null
+            }
+            else {
+                try {
+                    $proc = Start-Process -FilePath $installerPath -ArgumentList $installArgs -Wait -PassThru -NoNewWindow -ErrorAction Stop
+                }
+                catch {
+                    Show-Error "  -> failed to start installer: $_"
+                    $proc = $null
+                }
             }
 
             if ($proc -and $proc.ExitCode -eq 0) {
@@ -252,6 +341,9 @@ function Install-WindowsSdkForMt {
                 Show-Warning "  -> SDK installer returned exit code $($proc.ExitCode). Trying winget fallback ..."
             }
         }
+    }
+    finally {
+        Remove-Item -LiteralPath $dlDir -Recurse -Force -ErrorAction SilentlyContinue
     }
 
     # -- Winget fallback (uses --id; winget rejects --name combined with --source).
@@ -533,8 +625,20 @@ function Test-CjkProbe {
     }
 }
 
+function Test-ExeSupportsVersion {
+    # Proxy for a build new enough to handle CJK argv natively (old C++ lacks --version and corrupts CJK; new rust has both).
+    # Not a direct CJK test -- Test-CjkProbe is definitive.
+    param([string] $ExePath)
+    try {
+        $out = & $ExePath --version 2>$null
+        return ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrEmpty($out))
+    }
+    catch {
+        return $false
+    }
+}
+
 function Get-Md5Hex {
-    # Lowercase MD5 of a file, or 'NA' if it cannot be read.
     param([string] $ExePath)
     try {
         return (Get-FileHash -Algorithm MD5 -LiteralPath $ExePath -ErrorAction Stop).Hash.ToLowerInvariant()
@@ -545,7 +649,6 @@ function Get-Md5Hex {
 }
 
 function Get-FileTimeText {
-    # File last-write time as 'yyyy-MM-dd HH:mm:ss', or 'NA' if it cannot be read.
     param([string] $ExePath)
     try {
         return ([IO.File]::GetLastWriteTime($ExePath)).ToString('yyyy-MM-dd HH:mm:ss')
@@ -556,7 +659,6 @@ function Get-FileTimeText {
 }
 
 function Get-AbsolutePath {
-    # Absolute (full) path for an exe, even if the caller passed a relative -Exe.
     param([string] $ExePath)
     try {
         return [IO.Path]::GetFullPath($ExePath)
@@ -610,6 +712,18 @@ function Invoke-Restore {
     param([string[]] $Exes)
     $rc = 0
     foreach ($exe in $Exes) {
+        # A build that answers --version handles CJK argv natively, so the manifest patch is inert:
+        # leave the exe untouched and drop the stale backup instead of overwriting a good binary.
+        if (Test-ExeSupportsVersion -ExePath $exe) {
+            Show-Info ('[{0}] supports --version (native CJK build); keeping exe as-is, not overwriting.' -f [IO.Path]::GetFileName($exe))
+            $bak = "$exe.utf8bak"
+            if ([IO.File]::Exists($bak)) {
+                Remove-Item -LiteralPath $bak -Force -ErrorAction SilentlyContinue
+                Show-Info ('  -> removed stale backup: {0}' -f [IO.Path]::GetFileName($bak))
+            }
+            continue
+        }
+
         $bak = "$exe.utf8bak"
         if (-not [IO.File]::Exists($bak)) {
             Show-Warning ('[{0}] no .utf8bak to restore from -> skip' -f [IO.Path]::GetFileName($exe))
@@ -636,6 +750,11 @@ function Invoke-Apply {
 
         if ($Acp -eq '65001' -and -not $script:IsPatchWhenUtf8) {
             Show-Info '  -> ACP=65001 (UTF-8); msr/nin already handle CJK. Skipping unnecessary patch (use -PatchWhenUtf8 1 to patch anyway).'
+            continue
+        }
+
+        if (Test-ExeSupportsVersion -ExePath $exe) {
+            Show-Info '  -> exe supports --version (newer build with native CJK handling); skipping patch unconditionally.'
             continue
         }
 
@@ -713,6 +832,23 @@ if ($script:IsRestore) {
     exit (Invoke-Restore -Exes $exes)
 }
 
+# Fast exit for Apply / dry-run: if EVERY target answers --version it handles CJK argv natively, so the manifest
+# patch is unnecessary and we never need mt.exe at all -- skip all mt.exe discovery / download / SDK install.
+# VerifyOnly is excluded on purpose: it still reads the embedded manifest via mt.exe to report full status.
+if (-not $script:IsVerifyOnly) {
+    $allNative = $true
+    foreach ($exe in $exes) {
+        if (-not (Test-ExeSupportsVersion -ExePath $exe)) { $allNative = $false; break }
+    }
+    if ($allNative) {
+        Show-Info 'All targets support --version (newer builds with native CJK argv handling); no manifest patch needed. Skipping mt.exe entirely.'
+        foreach ($exe in $exes) {
+            Show-Info ('  [{0}] native CJK build -> no patch | path={1}' -f [IO.Path]::GetFileName($exe), (Get-AbsolutePath $exe))
+        }
+        exit 0
+    }
+}
+
 $mt = Get-MtExePath
 Show-Info "mt.exe: $mt"
 Show-Info ('Targets: {0}' -f ($exes -join ', '))
@@ -737,6 +873,9 @@ if (-not $script:IsApply) {
         $manifest = Get-EmbeddedManifest -MtExe $mt -ExePath $exe
         $action = if ($acp -eq '65001' -and -not $script:IsPatchWhenUtf8) {
             '-> SKIP (ACP=65001; use -PatchWhenUtf8 1)'
+        }
+        elseif (Test-ExeSupportsVersion -ExePath $exe) {
+            '-> SKIP (exe supports --version = newer build with native CJK handling; patch unnecessary)'
         }
         elseif (Test-AlreadyPatched $manifest) {
             if ($script:IsForceRepair) {

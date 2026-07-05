@@ -3,6 +3,7 @@
 :: Will show the processes info with colors before killing.
 :: This scripts depends and will call psall.bat.
 ::
+:: IMPORTANT: Copy ps*.bat and PsTool.ps1 to the same PATH directory, e.g. the directory returned by: where psall.bat
 :: Latest version in: https://github.com/qualiu/msrTools/
 ::============================================================
 @echo off
@@ -35,7 +36,7 @@ if "!MsrArgsNoSD!" NEQ "!MsrArgs!" (
 :: Test args for msr.exe
 msr -z justTestArgs !MsrArgs! >nul 2>nul
 if %ERRORLEVEL% LSS 0 (
-    echo Error parameters for %~nx0: %* , test with: -z justTestArgs: | msr -aPA -t "Error.*for (\S+)" -e "test with"
+    echo Invalid %~nx0 args: %* | msr -aPA -e "Invalid|args" -x %~nx0
     msr -z justTestArgs !MsrArgs!
     exit /b -1
 )
@@ -58,7 +59,7 @@ if !ERRORLEVEL! EQU 0 ( set "PwshExe=pwsh" ) else ( set "PwshExe=PowerShell" )
 set "PIDs="
 if !IsAllNumbersAsPIDs! GTR 0 (
     for /f "tokens=*" %%a in ('echo !MsrArgs! ^| msr -t "\s+(\d+)" -o ",\1" -aPAC ^| msr -t "\s+$" -o "" -aPAC') do (
-        call !PwshExe! -Command "& '!PsToolPath!' -Ids '%%a' -Action Stop"
+        call !PwshExe! -NoProfile -Command "& '!PsToolPath!' -Ids '%%a' -Action Stop"
     )
     exit /b !ERRORLEVEL!
 )
@@ -95,23 +96,7 @@ set ALL_ARGS=
 set "PsToolArgs=-Action Stop"
 if defined ShowDescendantsArg set "PsToolArgs=!PsToolArgs! !ShowDescendantsArg!"
 set "ArgNamesPattern=has-text|text-match|ignore-case|nx|nt|colors|out-all|no-any-info|no-path-line|no-summary|head|tail"
-for /f "tokens=1,*" %%a in ('msr -z justTestArgs !MsrArgs! --verbose 2^>^&1 ^| msr -t "^([\s-]+)(!ArgNamesPattern!) = (.+)" -o "\1\2\t\3" -PAC') do (
-    echo %%a | findstr /R "^--" >nul && set "prefix=--" || set "prefix="
-    set "name=%%a" & set "name=!name:--=!" & set "name=!name: =!"
-    set "value=%%b"
-    if "!name!" == "has-text" set "PsToolArgs=!PsToolArgs! -MatchAllText '!value!'"
-    if "!name!" == "text-match" set "PsToolArgs=!PsToolArgs! -MatchAllPattern '!value!'"
-    if "!name!" == "nx" set "PsToolArgs=!PsToolArgs! -ExcludeAllText '!value!'"
-    if "!name!" == "nt" set "PsToolArgs=!PsToolArgs! -ExcludeAllPattern '!value!'"
-    if "!name!" == "ignore-case" set "PsToolArgs=!PsToolArgs! -IgnoreCase !value!"
-    if "!name!" == "colors" set "ColorsArg=!value!"
-    if "!name!" == "out-all" set "OutAll=!value!"
-    if "!name!" == "no-path-line" set "NoPathRow=!value!"
-    if "!name!" == "no-any-info" set "NoAnyInfo=!value!"
-    if "!name!" == "no-summary" set "NoSummary=!value!"
-    if "!name!" == "head" if "!prefix!" == "--" set "PsToolArgs=!PsToolArgs! -Head !value!"
-    if "!name!" == "tail" if "!prefix!" == "--" set "PsToolArgs=!PsToolArgs! -Tail !value!"
-)
+call :parse_msr_args_for_pstool
 
 if "!ColorsArg!" == "" ( set "ColorsArg=--colors u=Yellow,m=Green" ) else ( set "ColorsArg=" )
 if "!OutAll!" == "false" set "ColorsArg=!ColorsArg! -a"
@@ -126,17 +111,48 @@ if "!NoAnyInfo!" == "false" (
     set "ColorsArg=!ColorsArg! -A"
 ) else (
     set "PsToolArgs=!PsToolArgs! -NoSummary true"
+    set "NoSummaryAdded=1"
     if "!NoPathRow!" == "false" set "PsToolArgs=!PsToolArgs! -NoHeader true"
 )
 
 if "!NoSummary!" == "false" (
     set "ColorsArg=!ColorsArg! -M"
 ) else (
-    set "PsToolArgs=!PsToolArgs! -NoSummary true"
+    if not "!NoSummaryAdded!" == "1" set "PsToolArgs=!PsToolArgs! -NoSummary true"
 )
 
 msr -z "!NoAnyInfo! !NoPathRow! !NoSummary!" -it true -M -H 0 || set "PsToolArgs=!PsToolArgs! -OutToStderrForHeaderSummary true"
 
-@REM echo !PwshExe! -Command "& '!PsToolPath!' !PsToolArgs!" ^| msr !ALL_ARGS! !ColorsArg!
-call !PwshExe! -Command "& '!PsToolPath!' !PsToolArgs!" | msr !ALL_ARGS! !ColorsArg!
+@REM echo !PwshExe! -NoProfile -Command "& '!PsToolPath!' !PsToolArgs!" ^| msr !ALL_ARGS! !ColorsArg!
+call !PwshExe! -NoProfile -Command "& '!PsToolPath!' !PsToolArgs!" | msr !ALL_ARGS! !ColorsArg!
 exit /b !ERRORLEVEL!
+
+:parse_msr_args_for_pstool
+    for /f "tokens=1,*" %%a in ('msr -z justTestArgs !MsrArgs! --verbose 2^>^&1 ^| msr -t "^([\s-]+)(!ArgNamesPattern!) = (.+)" -o "\1\2\t\3" -PAC') do (
+        set "prefix="
+        set "name=%%a"
+        if "!name:~0,2!" == "--" set "prefix=--"
+        set "name=!name:--=!" & set "name=!name: =!"
+        set "value=%%b"
+        set "value=!value:'=''!"
+        if "!name!" == "has-text" set "PsToolArgs=!PsToolArgs! -MatchAllText '!value!'"
+        if "!name!" == "text-match" set "PsToolArgs=!PsToolArgs! -MatchAllPattern '!value!'"
+        if "!name!" == "nx" set "PsToolArgs=!PsToolArgs! -ExcludeAllText '!value!'"
+        if "!name!" == "nt" set "PsToolArgs=!PsToolArgs! -ExcludeAllPattern '!value!'"
+        if "!name!" == "ignore-case" set "PsToolArgs=!PsToolArgs! -IgnoreCase !value!"
+        if "!name!" == "colors" set "ColorsArg=!value!"
+        if "!name!" == "out-all" set "OutAll=!value!"
+        if "!name!" == "no-path-line" set "NoPathRow=!value!"
+        if "!name!" == "no-any-info" set "NoAnyInfo=!value!"
+        if "!name!" == "no-summary" set "NoSummary=!value!"
+        if "!name!" == "head" if "!prefix!" == "--" set "PsToolArgs=!PsToolArgs! -Head !value!"
+        if "!name!" == "tail" if "!prefix!" == "--" set "PsToolArgs=!PsToolArgs! -Tail !value!"
+    )
+    for /f "tokens=1,*" %%a in ('msr -z justTestArgs !MsrArgs! --verbose 2^>^&1 ^| msr -t "^(-[txi]) = (.+)" -o "\1\t\2" -PAC') do (
+        set "value=%%b"
+        set "value=!value:'=''!"
+        if "%%a" == "-t" set "PsToolArgs=!PsToolArgs! -MatchAllPattern '!value!'"
+        if "%%a" == "-x" set "PsToolArgs=!PsToolArgs! -MatchAllText '!value!'"
+        if "%%a" == "-i" set "PsToolArgs=!PsToolArgs! -IgnoreCase true"
+    )
+    exit /b 0
