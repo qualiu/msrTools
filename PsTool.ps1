@@ -59,10 +59,10 @@
     Whether to suppress summary output (default: "false"). Accepts "1", "0", "true", or "false". When true, suppresses summary messages like "Found X processes" or "Successfully terminated Y processes".
 
 .PARAMETER Head
-    Output first N matching processes (-1 means no limit, default: -1)
+    Output first N matching processes; negative N skips the first N processes, and 0 outputs no process rows
 
 .PARAMETER Tail
-    Output last N matching processes (-1 means no limit, default: -1)
+    Output last N matching processes; negative N skips the last N processes, and 0 outputs no process rows
 
 .PARAMETER IgnoreCase
     Whether to ignore case when matching (default: "true"). Accepts "1", "0", "true", or "false". Affects ProcessName, CommandLine, ProcessNamePattern, CommandLinePattern, and all Excluding parameters.
@@ -124,32 +124,30 @@ param(
     [string]$ExcludeAllPattern = "",
     [string]$ExcludeAllText = "",
     [Alias("SD")]
+    [ValidateSet("1", "0", "true", "false", "yes", "no", "on", "off")]
     [string]$ShowDescendants = "false",
+    [ValidateSet("1", "0", "true", "false", "yes", "no", "on", "off")]
     [string]$NoHeader = "false",
+    [ValidateSet("1", "0", "true", "false", "yes", "no", "on", "off")]
     [string]$NoSummary = "false",
-    [int]$Head = -1,
-    [int]$Tail = -1,
+    [Nullable[int]]$Head = $null,
+    [Nullable[int]]$Tail = $null,
+    [ValidateSet("1", "0", "true", "false", "yes", "no", "on", "off")]
     [string]$IgnoreCase = "true",
+    [ValidateSet("1", "0", "true", "false", "yes", "no", "on", "off")]
     [string]$OutToStderrForHeaderSummary = "false"
 )
 
-# Function to check if any search criteria is specified
-function Test-HasSearchCriteria {
-    # Use script-level parameters directly
+# Stop requires a positive selector; exclusions only narrow an existing selection.
+function Test-HasInclusionCriteria {
     return -not (
         [string]::IsNullOrWhiteSpace($ProcessName) -and
         [string]::IsNullOrWhiteSpace($CommandLine) -and
         [string]::IsNullOrWhiteSpace($ProcessNamePattern) -and
         [string]::IsNullOrWhiteSpace($CommandLinePattern) -and
         [string]::IsNullOrWhiteSpace($Ids) -and
-        [string]::IsNullOrWhiteSpace($ExcludeProcessName) -and
-        [string]::IsNullOrWhiteSpace($ExcludeCommandLine) -and
-        [string]::IsNullOrWhiteSpace($ExcludeProcessNamePattern) -and
-        [string]::IsNullOrWhiteSpace($ExcludeCommandLinePattern) -and
         [string]::IsNullOrWhiteSpace($MatchAllPattern) -and
-        [string]::IsNullOrWhiteSpace($MatchAllText) -and
-        [string]::IsNullOrWhiteSpace($ExcludeAllPattern) -and
-        [string]::IsNullOrWhiteSpace($ExcludeAllText)
+        [string]::IsNullOrWhiteSpace($MatchAllText)
     )
 }
 
@@ -162,8 +160,8 @@ function Get-NowText {
 
 # Safety check for Stop action - at least one parameter must be specified
 if ($Action -eq "Stop") {
-    if (-not (Test-HasSearchCriteria)) {
-        Write-Error "For Stop action, at least one of the following parameters must be specified: ProcessName, CommandLine, ProcessNamePattern, CommandLinePattern, or Ids"
+    if (-not (Test-HasInclusionCriteria)) {
+        Write-Error "Stop requires at least one inclusion criterion: ProcessName, CommandLine, ProcessNamePattern, CommandLinePattern, Ids, MatchAllPattern, or MatchAllText."
         exit 1
     }
 }
@@ -526,32 +524,38 @@ function Out-ProcessSummary {
 function Get-FilteredByHeadTail {
     param(
         [array]$Processes,
-        [int]$Head = -1,
-        [int]$Tail = -1
+        [Nullable[int]]$Head = $null,
+        [Nullable[int]]$Tail = $null
     )
 
     $outputProcesses = @()
 
-    if ($Head -gt 0 -and $Tail -gt 0) {
-        # Both Head and Tail specified - get first Head and last Tail, avoiding duplicates
-        $headProcesses = $Processes | Select-Object -First $Head
-        $tailProcesses = $Processes | Select-Object -Last $Tail
+    if (($null -ne $Head -and $Head -eq 0) -or ($null -ne $Tail -and $Tail -eq 0)) {
+        return @()
+    }
 
-        # Combine and remove duplicates based on ProcessId
-        $combined = @($headProcesses) + @($tailProcesses)
-        $outputProcesses = $combined | Sort-Object ProcessId -Unique
+    if ($null -eq $Head) {
+        $outputProcesses = @($Processes)
     }
     elseif ($Head -gt 0) {
-        # Only Head specified
-        $outputProcesses = $Processes | Select-Object -First $Head
-    }
-    elseif ($Tail -gt 0) {
-        # Only Tail specified
-        $outputProcesses = $Processes | Select-Object -Last $Tail
+        $outputProcesses = @($Processes | Select-Object -First $Head)
     }
     else {
-        # No limits specified
-        $outputProcesses = $Processes
+        $outputProcesses = @($Processes | Select-Object -Skip (-$Head))
+    }
+
+    if ($null -ne $Tail -and $Tail -gt 0) {
+        if ($null -ne $Head -and $Head -gt 0) {
+            $outputProcesses = @($outputProcesses) + @($Processes | Select-Object -Last $Tail)
+            $outputProcesses = @($outputProcesses | Sort-Object ProcessId -Unique)
+        }
+        else {
+            $outputProcesses = @($outputProcesses | Select-Object -Last $Tail)
+        }
+    }
+    elseif ($null -ne $Tail -and $Tail -lt 0) {
+        $keepCount = [Math]::Max(0, $outputProcesses.Count + $Tail)
+        $outputProcesses = @($outputProcesses | Select-Object -First $keepCount)
     }
 
     return $outputProcesses
@@ -689,11 +693,8 @@ function Find-Processes {
         return
     }
 
-    # Apply Head and Tail filtering
+    $processes = @($processes | Sort-Object ProcessId)
     $outputProcesses = Get-FilteredByHeadTail -Processes $processes -Head $Head -Tail $Tail
-
-    # Sort by ProcessId before output
-    $outputProcesses = $outputProcesses | Sort-Object ProcessId
 
     # Output header
     Out-ResultHeader
@@ -723,15 +724,14 @@ function Stop-Processes {
         return
     }
 
+    $processes = @($processes | Where-Object { $_.ProcessId -gt 0 } | Sort-Object ProcessId)
     $processes = Get-FilteredByHeadTail -Processes $processes -Head $Head -Tail $Tail
 
-    # Sort processes by ProcessId for consistent output
-    $processes = $processes | Sort-Object ProcessId | Where-Object { $_.ProcessId -gt 0 }
-
     # Extract process IDs for batch killing
-    $processIds = @($processes.ProcessId)
+    $processIds = @($processes | ForEach-Object { $_.ProcessId })
     if ($processIds.Count -eq 0) {
-        Out-KeyMessage -Message "No matching process to terminate." -Type "warning"
+        $script:MatchedProcessCount = 0
+        Out-KeyMessage -Message "No matching process to terminate after applying head/tail limits." -Type "warning"
         return
     }
 
@@ -795,27 +795,11 @@ function Stop-Processes {
         # Wait a moment for processes to terminate
         Start-Sleep -Milliseconds 500
 
-        # Check which processes were successfully terminated
-        $succeededCount = 0
-        $failedCount = 0
-
-        foreach ($processId in $processIds) {
-            $stillRunning = Get-Process -Id $processId -ErrorAction SilentlyContinue
-            $procName = ($processes | Where-Object { $_.ProcessId -eq $processId }).Name
-
-            if (-not $stillRunning) {
-                $succeededCount++
-                Write-Debug "Successfully terminated process $processId ($procName)"
-            }
-            else {
-                $failedCount++
-                Out-KeyMessage "Failed to terminate process $processId ($procName) - process still running." -Type "warning"
-            }
-        }
-
-        Write-Debug "Batch termination result: $succeededCount/$($processIds.Count) processes terminated successfully."
-        if ($failedCount -gt 0) {
-            Out-KeyMessage -Message "Remains $failedCount processes could not be terminated (may be protected or have dependencies)." -Type "warning"
+        # Verify roots and descendants; a surviving child is still a failed tree termination.
+        $remainingIds = @($aliveIds | Where-Object { Get-Process -Id $_ -ErrorAction SilentlyContinue })
+        if ($remainingIds.Count -gt 0) {
+            $script:MatchedProcessCount = -1
+            Out-KeyMessage -Message "Failed to terminate $($remainingIds.Count) processes: $($remainingIds -join ', ')." -Type "failed"
         }
         else {
             Out-ProcessSummary -Verb "Successfully terminated" -MatchedCount $processIds.Count -DescendantCount $childCount

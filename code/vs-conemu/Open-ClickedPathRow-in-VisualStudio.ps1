@@ -75,8 +75,6 @@ function Get-ActiveVisualStudioInstance {
             }
         }
     }
-    Write-Error "Failed to find an active Visual Studio instance."
-    Start-Sleep -Seconds 5
     return $null
 }
 
@@ -174,7 +172,13 @@ function Select-FileRowColumnInVisualStudio {
     # Check if Visual Studio is running
     $vsInstance = Get-ActiveVisualStudioInstance
     if (-not $vsInstance) {
-        Write-Host "No running Visual Studio instance found. Please start Visual Studio first." -ForegroundColor Red
+        Write-Host "No running Visual Studio instance found. Opening with the default application." -ForegroundColor Yellow
+        try {
+            Start-Process -FilePath $FilePath -ErrorAction Stop
+        }
+        catch {
+            Write-Host "Failed to open file with the default application: $($_.Exception.Message)" -ForegroundColor Red
+        }
         return
     }
 

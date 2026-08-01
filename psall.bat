@@ -40,6 +40,8 @@ set "ShowDescendantsArg="
 set "IsKill=0"
 set "MsrArgs="
 set "NextArgIsValue=0"
+set "HeadArg="
+set "TailArg="
 call :collect_msr_args %*
 goto collect_msr_args_done
 
@@ -48,6 +50,10 @@ goto collect_msr_args_done
     set "currentArg=%~1"
     if "!NextArgIsValue!"=="1" (
         set MsrArgs=!MsrArgs! "!currentArg!"
+        if "!PreviousArg!"=="-H" set "HeadArg=!currentArg!"
+        if /I "!PreviousArg!"=="--head" set "HeadArg=!currentArg!"
+        if "!PreviousArg!"=="-T" set "TailArg=!currentArg!"
+        if /I "!PreviousArg!"=="--tail" set "TailArg=!currentArg!"
         set "NextArgIsValue=0"
     ) else if /I "!currentArg!"=="-SD" (
         set "ShowDescendantsArg=-ShowDescendants true"
@@ -55,6 +61,7 @@ goto collect_msr_args_done
         if "%~2"=="" ( set "IsKill=1" ) else ( set MsrArgs=!MsrArgs! "!currentArg!" )
     ) else (
         set MsrArgs=!MsrArgs! "!currentArg!"
+        set "PreviousArg=!currentArg!"
         call :set_next_arg_is_value "!currentArg!"
     )
     shift
@@ -80,9 +87,8 @@ goto collect_msr_args_done
 
 :collect_msr_args_done
 
-set "OnlyNumbers="
-for /f "tokens=*" %%a in ('echo !MsrArgs! ^| msr -I -t "^\s*\x22?\d+\x22?(\s+\x22?\d+\x22?)*\s*$" -PAC') do set "OnlyNumbers=1"
-if "!OnlyNumbers!"=="1" (
+msr -z "!MsrArgs!" -t "\A\s*\x22?\d+\x22?(\s+\x22?\d+\x22?)*\s*\z" -H 0 -M
+if !ERRORLEVEL! GTR 0 (
     echo %~n0 needs -t "regex" or -x "plain" ^(or -it/-ix^); use %~dp0pskill.bat PID for process id. | msr -aPA -e "\s+-+\w+|PID|-it|-ix|pskill" -x %~n0
     exit /b -1
 )
@@ -105,6 +111,8 @@ if "!IsKill!"=="1" (
     set "HasMatch=0"
     set "ArgNamesPattern=has-text|text-match|ignore-case|nx|nt|head|tail"
     call :parse_msr_args_for_pstool
+    if defined HeadArg set "PsToolArgs=!PsToolArgs! -Head !HeadArg!"
+    if defined TailArg set "PsToolArgs=!PsToolArgs! -Tail !TailArg!"
     if "!HasMatch!"=="0" (
         echo %~n0 -kill needs -t "regex" or -x "plain" ^(or -it/-ix^) to match processes. Nothing killed. | msr -aPA -e "\s+-+\w+|-kill|-it|-ix" -x %~n0
         exit /b -1
@@ -145,8 +153,10 @@ set ALL_ARGS=
 :: Parse msr arguments for PsTool.ps1
 set "PsToolArgs=-Action Find"
 if defined ShowDescendantsArg set "PsToolArgs=!PsToolArgs! !ShowDescendantsArg!"
-set "ArgNamesPattern=has-text|text-match|ignore-case|nx|nt|colors|out-all|no-any-info|no-path-line|no-summary|head|tail"
+set "ArgNamesPattern=has-text|text-match|ignore-case|nx|nt|colors|out-all|no-any-info|no-path-line|no-summary"
 call :parse_msr_args_for_pstool
+if defined HeadArg set "PsToolArgs=!PsToolArgs! -Head !HeadArg!"
+if defined TailArg set "PsToolArgs=!PsToolArgs! -Tail !TailArg!"
 
 if "!ColorsArg!" == "" ( set "ColorsArg=--colors u=Yellow,m=Green" ) else ( set "ColorsArg=" )
 if "!OutAll!" == "false" set "ColorsArg=!ColorsArg! -a"
@@ -195,8 +205,6 @@ exit /b !ERRORLEVEL!
         if "!name!" == "no-path-line" set "NoPathRow=!value!"
         if "!name!" == "no-any-info" set "NoAnyInfo=!value!"
         if "!name!" == "no-summary" set "NoSummary=!value!"
-        if "!name!" == "head" if "!prefix!" == "--" set "PsToolArgs=!PsToolArgs! -Head !value!"
-        if "!name!" == "tail" if "!prefix!" == "--" set "PsToolArgs=!PsToolArgs! -Tail !value!"
     )
     for /f "tokens=1,*" %%a in ('msr -z justTestArgs !MsrArgs! --verbose 2^>^&1 ^| msr -t "^(-[txi]) = (.+)" -o "\1\t\2" -PAC') do (
         set "value=%%b"

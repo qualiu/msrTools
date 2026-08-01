@@ -24,25 +24,68 @@ msr -z "LostArg%~1" -t "^LostArg(|-h|--help|/\?)$" > nul || (
     exit /b 0
 )
 
-:: Detect -SD flag (ShowDescendants, not a valid msr arg) and strip from msr args
+:: Strip -SD as a whole argument while preserving quotes on all msr arguments.
 set "ShowDescendantsArg="
-set "MsrArgs=%*"
-set "MsrArgsNoSD=!MsrArgs:-SD=!"
-if "!MsrArgsNoSD!" NEQ "!MsrArgs!" (
+set "MsrArgs="
+set "NextArgIsValue=0"
+set "HeadArg="
+set "TailArg="
+call :collect_wrapper_args %*
+goto wrapper_args_done
+
+:collect_wrapper_args
+if "%~1"=="" exit /b 0
+set "currentArg=%~1"
+if "!NextArgIsValue!"=="1" (
+    set "MsrArgs=!MsrArgs! %1"
+    if "!PreviousArg!"=="-H" set "HeadArg=!currentArg!"
+    if /I "!PreviousArg!"=="--head" set "HeadArg=!currentArg!"
+    if "!PreviousArg!"=="-T" set "TailArg=!currentArg!"
+    if /I "!PreviousArg!"=="--tail" set "TailArg=!currentArg!"
+    set "NextArgIsValue=0"
+) else if /I "!currentArg!"=="-SD" (
     set "ShowDescendantsArg=-ShowDescendants true"
-    set "MsrArgs=!MsrArgsNoSD!"
+) else (
+    set "MsrArgs=!MsrArgs! %1"
+    set "PreviousArg=!currentArg!"
+    call :set_next_arg_is_value "!currentArg!"
 )
+shift
+goto collect_wrapper_args
 
-:: Test args for msr.exe
-msr -z justTestArgs !MsrArgs! >nul 2>nul
-if %ERRORLEVEL% LSS 0 (
-    echo Invalid %~nx0 args: %* | msr -aPA -e "Invalid|args" -x %~nx0
-    msr -z justTestArgs !MsrArgs!
-    exit /b -1
+:set_next_arg_is_value
+set "optionArg=%~1"
+if /I "!optionArg!"=="-t" set "NextArgIsValue=1"
+if /I "!optionArg!"=="-x" set "NextArgIsValue=1"
+if /I "!optionArg!"=="-it" set "NextArgIsValue=1"
+if /I "!optionArg!"=="-ix" set "NextArgIsValue=1"
+if /I "!optionArg!"=="-e" set "NextArgIsValue=1"
+if /I "!optionArg!"=="-H" set "NextArgIsValue=1"
+if /I "!optionArg!"=="-T" set "NextArgIsValue=1"
+if /I "!optionArg!"=="--text-match" set "NextArgIsValue=1"
+if /I "!optionArg!"=="--has-text" set "NextArgIsValue=1"
+if /I "!optionArg!"=="--nx" set "NextArgIsValue=1"
+if /I "!optionArg!"=="--nt" set "NextArgIsValue=1"
+if /I "!optionArg!"=="--head" set "NextArgIsValue=1"
+if /I "!optionArg!"=="--tail" set "NextArgIsValue=1"
+if /I "!optionArg!"=="--colors" set "NextArgIsValue=1"
+exit /b 0
+
+:wrapper_args_done
+
+set "IsAllNumbersAsPIDs=0"
+msr -z "!MsrArgs!" -t "\A\s*\x22?\d+\x22?(\s+\x22?\d+\x22?)*\s*\z" -H 0 -M
+if !ERRORLEVEL! GTR 0 set "IsAllNumbersAsPIDs=1"
+
+:: Bare numeric arguments are process IDs, not msr input paths. Validate only matching-option mode with msr.
+if "!IsAllNumbersAsPIDs!"=="0" (
+    msr -z justTestArgs !MsrArgs! >nul 2>nul
+    if !ERRORLEVEL! LSS 0 (
+        echo Invalid %~nx0 args: %* | msr -aPA -e "Invalid|args" -x %~nx0
+        msr -z justTestArgs !MsrArgs!
+        exit /b -1
+    )
 )
-
-echo !MsrArgs! | msr -t "(^|\s+)(-[PACIMO]+|-[UDHT]\s*\d+|-c\s*.*)" -o "" -aPAC | msr -t "^\d+[\d ]*$" >nul
-set /a IsAllNumbersAsPIDs=!ERRORLEVEL!
 
 msr -z justTestArgs !MsrArgs! -P >nul 2>nul
 if !ERRORLEVEL! NEQ -1 set NoPathToPsAll=-P
@@ -57,10 +100,10 @@ where pwsh.exe >nul 2>nul
 if !ERRORLEVEL! EQU 0 ( set "PwshExe=pwsh" ) else ( set "PwshExe=PowerShell" )
 
 set "PIDs="
-if !IsAllNumbersAsPIDs! GTR 0 (
-    for /f "tokens=*" %%a in ('echo !MsrArgs! ^| msr -t "\s+(\d+)" -o ",\1" -aPAC ^| msr -t "\s+$" -o "" -aPAC') do (
-        call !PwshExe! -NoProfile -Command "& '!PsToolPath!' -Ids '%%a' -Action Stop"
-    )
+if "!IsAllNumbersAsPIDs!"=="1" (
+    set "PidList=!MsrArgs: =,!"
+    if "!PidList:~0,1!"=="," set "PidList=!PidList:~1!"
+    call !PwshExe! -NoProfile -Command "& '!PsToolPath!' -Ids '!PidList!' -Action Stop"
     exit /b !ERRORLEVEL!
 )
 
@@ -95,8 +138,10 @@ set ALL_ARGS=
 :: Parse msr arguments for PsTool.ps1
 set "PsToolArgs=-Action Stop"
 if defined ShowDescendantsArg set "PsToolArgs=!PsToolArgs! !ShowDescendantsArg!"
-set "ArgNamesPattern=has-text|text-match|ignore-case|nx|nt|colors|out-all|no-any-info|no-path-line|no-summary|head|tail"
+set "ArgNamesPattern=has-text|text-match|ignore-case|nx|nt|colors|out-all|no-any-info|no-path-line|no-summary"
 call :parse_msr_args_for_pstool
+if defined HeadArg set "PsToolArgs=!PsToolArgs! -Head !HeadArg!"
+if defined TailArg set "PsToolArgs=!PsToolArgs! -Tail !TailArg!"
 
 if "!ColorsArg!" == "" ( set "ColorsArg=--colors u=Yellow,m=Green" ) else ( set "ColorsArg=" )
 if "!OutAll!" == "false" set "ColorsArg=!ColorsArg! -a"
@@ -145,8 +190,6 @@ exit /b !ERRORLEVEL!
         if "!name!" == "no-path-line" set "NoPathRow=!value!"
         if "!name!" == "no-any-info" set "NoAnyInfo=!value!"
         if "!name!" == "no-summary" set "NoSummary=!value!"
-        if "!name!" == "head" if "!prefix!" == "--" set "PsToolArgs=!PsToolArgs! -Head !value!"
-        if "!name!" == "tail" if "!prefix!" == "--" set "PsToolArgs=!PsToolArgs! -Tail !value!"
     )
     for /f "tokens=1,*" %%a in ('msr -z justTestArgs !MsrArgs! --verbose 2^>^&1 ^| msr -t "^(-[txi]) = (.+)" -o "\1\t\2" -PAC') do (
         set "value=%%b"
