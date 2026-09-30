@@ -3,8 +3,38 @@
 - [msr + nin](https://github.com/qualiu/msr) for file processing + data mining.
 - [vscode-msr](https://marketplace.visualstudio.com/items?itemName=qualiu.vscode-msr) for code mining + change code + alias for all terminals/IDEs.
   - For clickable terminal in **Visual Studio** (like 2022), see [ConEmu + VisualStudio integration](./code/vs-conemu/README.md).
+- [GitHub TOTP helper](./github/README.md) for locally generating codes from named accounts with Windows Credential Manager storage.
+- [Windows default application helper](./common/Set-DefaultFileApplication.ps1) for setting per-user file associations with an existing ProgID, an executable, or a JSON configuration. Requires PowerShell 7; use `-WhatIf` to preview and `Get-Help -Detailed` for usage.
 - Alias Tools
   - Besides tools above, introduce alias tools to help simplify frequently used operations like git operations (like [gpm](https://github.com/qualiu/msrTools/blob/master/custom-alias/settings.json#L68-L72) / [gdm-l](https://github.com/qualiu/msrTools/blob/master/custom-alias/settings.json#L113-L117) / etc.)
+
+## Source Layout Checks
+
+Source code uses at most 200 display columns; comments, docstrings, logging, and source help text use at most 240.
+These are ceilings, not targets. Shorten first, then wrap at complete expressions, argument groups, or sentence boundaries.
+Do not split URLs, regexes, placeholders, or copyable commands. Rendered CLI help has its own layout, independent of source line width.
+
+Python 3.10+ and Git are required. Run from the repository root:
+
+```sh
+python -B tools/install_git_hooks.py
+python -B tools/check_line_width.py --staged
+python -B -m unittest discover -s tools/tests -p 'test_*.py' -v
+```
+
+The native pre-commit checks only added/modified source lines in the index, with full staged-file context.
+Unstaged content and unchanged historical long lines do not affect a commit.
+The installer preserves message/identity hooks, never changes `core.hooksPath`, and refuses unknown existing pre-commit hooks.
+If hooks are already managed elsewhere, review that entry point and integrate the staged-check command without removing its existing guards.
+
+Use `python -B tools/check_line_width.py --all` to explicitly inventory complete Git-visible source files in the worktree.
+Pass file paths instead to audit complete worktree files, for example `python -B tools/check_line_width.py github/totp.py`.
+Markdown, plain text, JSON, XML, and YAML are audited only when explicitly named, with a 240-column ceiling; they do not block ordinary commits.
+No mode changes files. Diagnostics omit source content. Exit codes are 0 for pass, 1 for width violations, and 2 for input or Git errors.
+The checker owns the dual thresholds; Flake8's `E501` stays disabled because its single threshold cannot represent this contract.
+The gate also rejects newly changed numeric width settings that differ from 200 in known formatter configurations and autopep8 source directives.
+These configuration files are included in `--all`; ordinary documents and data remain explicit-only.
+Display counting uses two columns for wide/fullwidth characters, zero for combining characters, and four-column tab stops, not terminal-specific emoji rendering.
 
 ## Why Use Custom Alias or Normal Alias
 

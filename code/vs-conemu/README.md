@@ -34,3 +34,38 @@ Use [ConEmu terminal](https://conemu.github.io/) and [ConEmu VS extension](https
       - gfind-cs-pref `ExecuteInConEmu` **--sp** `/ConEmu,Integration`
 
 ![search-code-and-click-in-vs](./images/click-paths-in-vs-conemu.png)
+
+## Troubleshooting local file links
+
+If an alias targets a directory but was created as a **file symbolic link**, Windows file reads may work through it while directory navigation and shell opening fail.
+Check the link itself with `Get-Item -Force`: `LinkType=SymbolicLink` alone does not distinguish file and directory links. A correct directory link has the
+`Directory` attribute and `PSIsContainer=True`; a mistyped file link can instead report `FileInfo`, `Archive, ReparsePoint`, and `Directory.Exists=False`.
+`Get-ChildItem` may return that link itself instead of its contents, and `Set-Location` may fail even when a nested file is readable.
+
+A controlled test on Windows 11 build 26100, using the same Markdown file and Edge association, produced:
+
+| Path parent | Forward slashes | Backslashes |
+|---|---|---|
+| Normal directory | Shell open succeeds | Shell open succeeds |
+| File symbolic link targeting a directory | `ShellExecute` error 2 | Shell open succeeds |
+| Directory symbolic link targeting that same directory | Shell open succeeds | Shell open succeeds |
+
+Slash direction exposes this link-type problem; forward slashes are not inherently broken. Repair the alias after confirming the type mismatch:
+
+1. Record its exact target and a representative file's SHA-256. Confirm that the target exists and is a directory.
+2. Create a temporary sibling directory symbolic link to that same target with `New-Item -ItemType SymbolicLink`. Require `PSIsContainer=True`, the `Directory`
+   attribute, and the same target/file identity before activating it. A directory junction is another option for supported local targets.
+3. Rename the original link to a unique backup name, then rename the verified replacement to the original alias name. Restore the backup name if activation fails.
+   These operations affect only the links: never recursively delete or move the target directory.
+4. Verify that `dir` lists contents, `cd` succeeds, the target and file hash are unchanged, and shell opening works with both slash forms. Keep the old link backup
+   until validation completes. A successful backslash path alone is only a workaround.
+
+When creating directory aliases, validate the resulting directory attribute immediately; a successful link-creation call or readable child file is not sufficient.
+
+ConEmu 230724 can classify a drive path with forward slashes as a URL. That branch passes the text directly to Windows `ShellExecute` and reports **URL open failed**
+on failure; it does not call `Open-ClickedPathRow-in-VisualStudio.ps1` or use `FarGotoEditorPath`. Changing the editor script or resetting a valid default application
+does not repair a mistyped link. `File.Exists` and `FindExecutable` alone are insufficient to verify shell opening. Compare link metadata across machines before
+attributing different results to ConEmu, Edge, or Windows versions.
+
+Sources for version 230724: [URL classification](https://github.com/Maximus5/ConEmu/blob/v23.07.24/src/ConEmu/Match.cpp) and
+[URL/editor dispatch](https://github.com/Maximus5/ConEmu/blob/v23.07.24/src/ConEmu/RealBuffer.cpp), function `CRealBuffer::ProcessFarHyperlink`.

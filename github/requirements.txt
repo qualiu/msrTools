@@ -1,0 +1,4 @@
+keyring>=25
+pyotp>=2.9
+Pillow>=10
+zxing-cpp>=2.2

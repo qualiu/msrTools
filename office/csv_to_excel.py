@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# autopep8: --max-line-length=160
+# autopep8: --max-line-length=200
 # pip install pandas openpyxl xlsxwriter
 import sys
 import pandas as pd

@@ -1,0 +1,4 @@
+root = true
+
+[*.{bat,c,cc,cmd,cpp,cs,go,h,hpp,java,js,jsx,ps1,psm1,py,rs,sh,ts,tsx}]
+max_line_length = 200
