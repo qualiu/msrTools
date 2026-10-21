@@ -65,7 +65,9 @@ function Invoke-AssociationScenario {
         [switch] $FailRestore,
         [switch] $FailCleanup,
         [switch] $ProgIdOnly,
-        [switch] $WrongEffectiveChoice
+        [switch] $WrongEffectiveChoice,
+        [switch] $MissingNotifications,
+        [switch] $FailNotifications
     )
     foreach ($definition in $functionDefinitions) {
         . ([scriptblock]::Create($definition))
@@ -88,6 +90,19 @@ function Invoke-AssociationScenario {
         Result = $null
         Error = $null
         Registration = $registration
+    }
+    $notifications = [pscustomobject]@{ Values = @(if ($MissingNotifications) { [pscustomobject]@{ Applied = $false } }); Attempted = $false }
+    function Get-AssociationNotificationRegistration { param($FileExtension, $TargetProgId) return $notifications }
+    function Set-AssociationNotificationRegistration {
+        param($Registration)
+        $simulation.Events.Add('set-notifications')
+        $Registration.Attempted = $true
+        $Registration.Values[0].Applied = $true
+        if ($FailNotifications) { throw 'Synthetic notification failure' }
+    }
+    function Restore-AssociationNotificationRegistration {
+        param($Registration)
+        if ($Registration.Attempted) { $simulation.Events.Add('restore-notifications') }
     }
     function Assert-ClassicUserChoiceSupported { param($FileExtension) }
     function Get-ProgIdOpenCommand { param($TargetProgId) 'synthetic open command' }
@@ -208,6 +223,22 @@ Invoke-Case 'A matching hash cannot hide Windows rejecting the association' {
     Assert-True (($outcome.Events -join ',') -ceq 'plan,snapshot,write,notify,restore-choice,notify') 'An ineffective association skipped repair, rollback or notification.'
 }
 
+Invoke-Case 'Missing notification state is repaired even when Shell resolution and hash already match' {
+    $outcome = Invoke-AssociationScenario -Existing -SameChoice -MissingNotifications
+    Assert-True ($null -eq $outcome.Error -and $outcome.Result.NotificationsConfigured -and $outcome.Result.Changed) 'Notification repair was skipped.'
+    Assert-True (($outcome.Events -join ',') -ceq 'plan,snapshot,set-notifications,write,notify') 'Notification repair ordering is incorrect.'
+    $preview = Invoke-AssociationScenario -Existing -SameChoice -MissingNotifications -Preview
+    Assert-True (($preview.Events -join ',') -ceq 'plan,snapshot' -and -not $preview.Result.NotificationsConfigured) 'Preview changed notification state.'
+}
+
+Invoke-Case 'Notification failure restores partial state before cleaning the new application' {
+    $outcome = Invoke-AssociationScenario -MissingNotifications -FailNotifications
+    Assert-True ($outcome.Error -match 'previous state was restored.*Synthetic notification failure') 'Notification failure was lost.'
+    Assert-True (($outcome.Events -join ',') -ceq 'plan,snapshot,register,set-notifications,restore-notifications,remove-registration') 'Partial notification rollback is incorrect.'
+    $outcome = Invoke-AssociationScenario -MissingNotifications -FailWrite
+    Assert-True (($outcome.Events -join ',') -ceq 'plan,snapshot,register,set-notifications,write,restore-choice,restore-notifications,remove-registration') 'Rollback ordering is incorrect.'
+}
+
 Invoke-Case 'Missing registration is repaired even when UserChoice already matches' {
     $outcome = Invoke-AssociationScenario -SameChoice
     Assert-True ($null -eq $outcome.Error -and $outcome.Result.Changed) 'A missing registration was skipped.'
@@ -284,6 +315,49 @@ Invoke-Case 'Real executable preview leaves its private registration unchanged' 
 }
 
 if ($Live) {
+    Invoke-Case 'Live competing applications, notification idempotency, and exact rollback' {
+        $extension = '.msrtools-test-' + [guid]::NewGuid().ToString('N')
+        $extensionPath = "Software\Classes\$extension"
+        $toastPath = 'Software\Microsoft\Windows\CurrentVersion\ApplicationAssociationToasts'
+        $targetName = "Example.New_$extension"
+        $previousName = "Example.Previous_$extension"
+        $unrelatedName = "Example.Unrelated_$extension"
+        $toastKey = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($toastPath, $true)
+        try {
+            $competitors = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey("$extensionPath\OpenWithProgids", $true)
+            try { $competitors.SetValue('Example.Previous', [byte[]]@(), [Microsoft.Win32.RegistryValueKind]::None) } finally { $competitors.Dispose() }
+            $toastKey.SetValue($previousName, 1, [Microsoft.Win32.RegistryValueKind]::DWord)
+            $plan = Get-AssociationNotificationRegistration -FileExtension $extension -TargetProgId 'Example.New'
+            Assert-True ($plan.Values.Count -eq 2) 'The target or competing application was omitted.'
+            Set-AssociationNotificationRegistration -Registration $plan
+            Assert-True ($toastKey.GetValue($targetName) -eq 0 -and $toastKey.GetValue($previousName) -eq 0) 'Notification values were not configured.'
+            $repeated = Get-AssociationNotificationRegistration -FileExtension $extension -TargetProgId 'Example.New'
+            Assert-True ($repeated.Values.Count -eq 0) 'Configured notification state was not a no-op.'
+            $toastKey.SetValue($unrelatedName, 'preserve', [Microsoft.Win32.RegistryValueKind]::String)
+            Restore-AssociationNotificationRegistration -Registration $plan
+            Assert-True ($toastKey.GetValueNames() -notcontains $targetName) 'Rollback retained a newly created value.'
+            Assert-True ($toastKey.GetValue($previousName) -eq 1) 'Rollback lost the previous notification setting.'
+            Assert-True ($toastKey.GetValue($unrelatedName) -ceq 'preserve') 'Rollback changed an unrelated value.'
+            $plan = Get-AssociationNotificationRegistration -FileExtension $extension -TargetProgId 'Example.New'
+            Set-AssociationNotificationRegistration -Registration $plan
+            $toastKey.SetValue($targetName, 2, [Microsoft.Win32.RegistryValueKind]::DWord)
+            Assert-Throws { Restore-AssociationNotificationRegistration -Registration $plan } 'changed during recovery'
+            Assert-True ($toastKey.GetValue($targetName) -eq 2) 'Recovery overwrote a concurrent change.'
+        } finally {
+            foreach ($name in @($targetName, $previousName, $unrelatedName)) { $toastKey.DeleteValue($name, $false) }
+            $toastKey.Dispose()
+            $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey("$extensionPath\OpenWithProgids", $true)
+            if ($null -ne $key) {
+                try {
+                    $key.DeleteValue('Example.Previous', $false)
+                    Assert-True ($key.ValueCount -eq 0 -and $key.SubKeyCount -eq 0) 'Preserving unexpected synthetic registration data.'
+                } finally { $key.Dispose() }
+                [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKey("$extensionPath\OpenWithProgids", $false)
+                [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKey($extensionPath, $false)
+            }
+        }
+    }
+
     Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
@@ -310,6 +384,11 @@ public static class DefaultApplicationTestProbe
             throw 'Refusing to clean an extension outside the synthetic test scope.'
         }
         try {
+            $toastPath = 'Software\Microsoft\Windows\CurrentVersion\ApplicationAssociationToasts'
+            $toastKey = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($toastPath, $true)
+            if ($null -ne $toastKey) {
+                try { $toastKey.DeleteValue("$($Registration.ProgId)_$Extension", $false) } finally { $toastKey.Dispose() }
+            }
             $relativePath = "$script:FileExtsRegistryRoot\$Extension"
             [DefaultAppAssociation.NativeMethods]::DeleteCurrentUserKey("$relativePath\UserChoice")
             $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($relativePath)

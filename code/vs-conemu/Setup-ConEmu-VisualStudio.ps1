@@ -120,10 +120,10 @@ if (-not $SkipFileAssociations) {
     $associationTool = Join-Path $PSScriptRoot '../../common/Set-DefaultFileApplication.ps1'
     if ($PSVersionTable.PSVersion.Major -ge 7) {
         $associations = @(& $associationTool -Extension $FileExtensions -ProgId $DefaultFileProgId -Confirm:$false)
-        if (@($associations | Where-Object { -not $_.WindowsVerified }).Count -ne 0) {
+        if (@($associations | Where-Object { -not $_.WindowsVerified -or -not $_.NotificationsConfigured }).Count -ne 0) {
             throw 'Windows did not verify every requested file association; ConEmu settings were not changed.'
         }
-        $associations | Select-Object Extension, EffectiveProgId, WindowsVerified, Changed | Format-Table -AutoSize
+        $associations | Select-Object Extension, EffectiveProgId, WindowsVerified, NotificationsConfigured, Changed | Format-Table -AutoSize
     } else {
         $pwshCommand = Get-Command pwsh.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1
         & $pwshCommand.Source -NoProfile -File $associationTool -Extension ($FileExtensions -join ',') -ProgId $DefaultFileProgId -Confirm:$false

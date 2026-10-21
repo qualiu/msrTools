@@ -23,9 +23,12 @@ Use [ConEmu terminal](https://conemu.github.io/) and [ConEmu VS extension](https
   ```
 
   It prepares per-user Edge associations for `.html`, `.htm`, `.md`, `.markdown`, `.xml`, `.log`, `.json`, and `.txt` before configuring ConEmu.
-  Each association must report `WindowsVerified=True`: the helper checks the effective Windows Shell ProgID and executable, as well as the UserChoice hash.
-  This prevents a first-open application chooser caused by a missing association, including clicks ConEmu handles directly through ShellExecute.
-  A locally matching hash alone is not proof Windows accepts the association. A failed verification preserves the previous association and stops setup.
+  Each association must report `WindowsVerified=True` and `NotificationsConfigured=True`.
+  The helper checks the effective Shell ProgID, executable and UserChoice hash, and records notification state for the chosen and competing registered applications.
+  Missing `ApplicationAssociationToasts` entries can trigger an application chooser even when the hash and Shell queries are correct.
+  Changes share one confirmation and roll back on failure. Existing complete mappings are left unchanged.
+  Validate the result with an actual Ctrl+click on a Markdown path or `file:///` link in ConEmu: Edge should open without an application chooser.
+  Shell queries alone do not verify the click behavior. A failed association check stops setup before ConEmu settings are changed.
   Use `-DefaultFileProgId <registered-ProgID>` for another application, or `-SkipFileAssociations` to change only ConEmu settings.
   The click callback still prefers a running Visual Studio; otherwise it uses the file's default application.
 

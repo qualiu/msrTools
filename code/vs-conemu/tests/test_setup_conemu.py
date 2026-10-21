@@ -109,7 +109,14 @@ exit $LASTEXITCODE
             output = ctypes.create_unicode_buffer(length.value)
             self.assertEqual(query(0, 20, extension, None, output, ctypes.byref(length)), 0)
             self.assertEqual(output.value, "MSEdgeHTM")
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\ApplicationAssociationToasts") as key:
+                self.assertEqual(winreg.QueryValueEx(key, "MSEdgeHTM_" + extension), (0, winreg.REG_DWORD))
         finally:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\ApplicationAssociationToasts", 0, winreg.KEY_SET_VALUE) as key:
+                try:
+                    winreg.DeleteValue(key, "MSEdgeHTM_" + extension)
+                except FileNotFoundError:
+                    pass
             try:
                 winreg.DeleteKey(winreg.HKEY_CURRENT_USER, key_path + r"\UserChoice")
             except FileNotFoundError:

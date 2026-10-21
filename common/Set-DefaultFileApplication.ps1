@@ -22,7 +22,8 @@ Sets the current user's default application for one or more file extensions.
 
 .DESCRIPTION
 Associates file extensions with an existing Windows ProgID or an executable. The tool verifies the UserChoice timestamp and hash,
-notifies Windows Explorer, and checks Windows Shell resolution of the effective ProgID and executable.
+registers application notification state, notifies Windows Explorer, and checks effective Shell resolution.
+Notification state includes competing registered applications, which can otherwise trigger a first-open chooser despite a valid UserChoice.
 
 Use direct parameters for one or more extensions, or ConfigPath for a JSON file containing multiple mappings. Changes apply only to the current user.
 
@@ -67,7 +68,7 @@ Previews a mapping without changing the registry.
 .NOTES
 The classic UserChoice hash implementation is derived from PS-SFTA 1.2.0 and cross-checked against Mozilla's WindowsUserChoice implementation.
 Windows installations using the newer UserChoiceLatest mechanism are detected and left unchanged because that mechanism uses a machine-specific hash.
-Application registration and UserChoice changes share one confirmation and are restored if the operation fails.
+Application registration, notification state and UserChoice changes share one confirmation and are restored if the operation fails.
 Run tests/Test-DefaultFileApplication.ps1 for isolated regression checks; add -Live to validate temporary registry associations that are cleaned up afterward.
 #>
 
@@ -738,6 +739,112 @@ function Get-EffectiveFileAssociation {
     }
 }
 
+function Get-AssociationNotificationRegistration {
+    param([string] $FileExtension, [string] $TargetProgId)
+
+    $relativePath = 'Software\Microsoft\Windows\CurrentVersion\ApplicationAssociationToasts'
+    $names = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $null = $names.Add("${TargetProgId}_$FileExtension")
+    foreach ($root in @([Microsoft.Win32.Registry]::ClassesRoot, [Microsoft.Win32.Registry]::CurrentUser)) {
+        $extensionPath = if ($root -eq [Microsoft.Win32.Registry]::ClassesRoot) { $FileExtension } else { "$script:FileExtsRegistryRoot\$FileExtension" }
+        if ($root -eq [Microsoft.Win32.Registry]::ClassesRoot) {
+            $key = $root.OpenSubKey($extensionPath)
+            if ($null -ne $key) {
+                try {
+                    $progId = [string] $key.GetValue('')
+                    if ($progId) { $null = $names.Add("${progId}_$FileExtension") }
+                } finally { $key.Dispose() }
+            }
+        }
+        $key = $root.OpenSubKey("$extensionPath\OpenWithProgids")
+        if ($null -ne $key) {
+            try {
+                foreach ($progId in $key.GetValueNames()) {
+                    if ($progId) { $null = $names.Add("${progId}_$FileExtension") }
+                }
+            } finally { $key.Dispose() }
+        }
+        $key = $root.OpenSubKey("$extensionPath\OpenWithList")
+        if ($null -ne $key) {
+            try {
+                $applications = if ($root -eq [Microsoft.Win32.Registry]::ClassesRoot) {
+                    @($key.GetSubKeyNames())
+                } else {
+                    @($key.GetValueNames() | Where-Object { $_ -cne 'MRUList' } | ForEach-Object { [string] $key.GetValue($_) })
+                }
+                foreach ($application in $applications) {
+                    if ($application) { $null = $names.Add("Applications\${application}_$FileExtension") }
+                }
+            } finally { $key.Dispose() }
+        }
+    }
+    foreach ($root in @([Microsoft.Win32.Registry]::LocalMachine, [Microsoft.Win32.Registry]::CurrentUser)) {
+        $browsers = $root.OpenSubKey('Software\Clients\StartMenuInternet')
+        if ($null -eq $browsers) { continue }
+        try {
+            foreach ($browser in $browsers.GetSubKeyNames()) {
+                $key = $browsers.OpenSubKey("$browser\Capabilities\FileAssociations")
+                if ($null -eq $key) { continue }
+                try {
+                    $progId = [string] $key.GetValue($FileExtension)
+                    if ($progId) { $null = $names.Add("${progId}_$FileExtension") }
+                } finally { $key.Dispose() }
+            }
+        } finally { $browsers.Dispose() }
+    }
+    $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($relativePath)
+    $keyPresent = $null -ne $key
+    try {
+        $existingNames = if ($keyPresent) { @($key.GetValueNames()) } else { @() }
+        foreach ($name in $existingNames) {
+            if ($name.EndsWith("_$FileExtension", [StringComparison]::OrdinalIgnoreCase)) { $null = $names.Add($name) }
+        }
+        $values = @(foreach ($name in $names) {
+            $present = $existingNames -contains $name
+            $value = if ($present) { $key.GetValue($name, $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames) } else { $null }
+            $kind = if ($present) { $key.GetValueKind($name) } else { $null }
+            if (-not $present -or $kind -ne [Microsoft.Win32.RegistryValueKind]::DWord -or $value -ne 0) {
+                [pscustomobject]@{ Name = $name; Present = $present; Value = $value; Kind = $kind; Applied = $false }
+            }
+        })
+    } finally { if ($keyPresent) { $key.Dispose() } }
+    return [pscustomobject]@{ RelativePath = $relativePath; KeyPresent = $keyPresent; Values = $values; Attempted = $false }
+}
+
+function Set-AssociationNotificationRegistration {
+    param($Registration)
+
+    $Registration.Attempted = $true
+    $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($Registration.RelativePath, $true)
+    try {
+        foreach ($value in $Registration.Values) {
+            $key.SetValue($value.Name, 0, [Microsoft.Win32.RegistryValueKind]::DWord)
+            $value.Applied = $true
+        }
+    } finally { $key.Dispose() }
+}
+
+function Restore-AssociationNotificationRegistration {
+    param($Registration)
+
+    if (-not $Registration.Attempted) { return }
+    $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($Registration.RelativePath, $true)
+    if ($null -eq $key) { return }
+    try {
+        foreach ($value in $Registration.Values) {
+            if (-not $value.Applied) { continue }
+            if ($key.GetValueNames() -notcontains $value.Name -or $key.GetValueKind($value.Name) -ne [Microsoft.Win32.RegistryValueKind]::DWord -or
+                $key.GetValue($value.Name) -ne 0) {
+                throw "Association notification changed during recovery; preserving '$($value.Name)'."
+            }
+            if ($value.Present) { $key.SetValue($value.Name, $value.Value, $value.Kind) } else { $key.DeleteValue($value.Name, $false) }
+            $value.Applied = $false
+        }
+        $removeEmptyKey = -not $Registration.KeyPresent -and $key.ValueCount -eq 0 -and $key.SubKeyCount -eq 0
+    } finally { $key.Dispose() }
+    if ($removeEmptyKey) { [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKey($Registration.RelativePath, $false) }
+}
+
 function Set-FileAssociation {
     [CmdletBinding(SupportsShouldProcess)]
     param(
@@ -775,10 +882,12 @@ function Set-FileAssociation {
     }
 
     $previousState = Get-UserChoiceState -FileExtension $normalizedExtension
+    $notifications = Get-AssociationNotificationRegistration -FileExtension $normalizedExtension -TargetProgId $effectiveProgId
     $effectiveState = Get-EffectiveFileAssociation -FileExtension $normalizedExtension
     $needsRegistration = $null -ne $registration -and -not $registration.Exists
     $windowsVerified = $effectiveState.ProgId -ieq $effectiveProgId -and -not [string]::IsNullOrWhiteSpace($effectiveState.Executable)
-    if (-not $Force -and -not $needsRegistration -and $previousState.ProgId -ceq $effectiveProgId -and $previousState.HashValid -and $windowsVerified) {
+    if (-not $Force -and -not $needsRegistration -and $notifications.Values.Count -eq 0 -and
+        $previousState.ProgId -ceq $effectiveProgId -and $previousState.HashValid -and $windowsVerified) {
         return [pscustomobject]@{
             Extension = $normalizedExtension
             PreviousProgId = $previousState.ProgId
@@ -788,6 +897,7 @@ function Set-FileAssociation {
             EffectiveProgId = $effectiveState.ProgId
             EffectiveExecutable = $effectiveState.Executable
             WindowsVerified = $true
+            NotificationsConfigured = $true
             Changed = $false
         }
     }
@@ -801,6 +911,9 @@ function Set-FileAssociation {
         try {
             if ($needsRegistration) {
                 Register-ApplicationProgId -Registration $registration
+            }
+            if ($notifications.Values.Count -ne 0) {
+                Set-AssociationNotificationRegistration -Registration $notifications
             }
             $choiceWriteAttempted = $true
             $currentState = Set-UserChoiceValue -FileExtension $normalizedExtension -TargetProgId $effectiveProgId -AdditionalValues $previousState.Values
@@ -820,6 +933,11 @@ function Set-FileAssociation {
                 } catch {
                     $restoreErrors.Add("UserChoice: $($_.Exception.Message)")
                 }
+            }
+            try {
+                Restore-AssociationNotificationRegistration -Registration $notifications
+            } catch {
+                $restoreErrors.Add("Association notifications: $($_.Exception.Message)")
             }
             if ($null -ne $registration -and $registration.Created) {
                 try {
@@ -858,6 +976,7 @@ function Set-FileAssociation {
         EffectiveProgId = $effectiveState.ProgId
         EffectiveExecutable = $effectiveState.Executable
         WindowsVerified = $windowsVerified
+        NotificationsConfigured = @($notifications.Values | Where-Object { -not $_.Applied }).Count -eq 0
         Changed = $changed
     }
 }
