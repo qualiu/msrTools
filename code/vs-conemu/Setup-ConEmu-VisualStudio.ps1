@@ -1,6 +1,7 @@
 <#
 .DESCRIPTION
     Auto setup ConEmu + Visual Studio integration.
+    Prepares Edge file associations and verifies Windows Shell resolution before changing ConEmu settings.
 
 .Parameter ConEmuConfigPaths
     All possible config paths of ConEmu (separated by comma) like: C:\Program Files\ConEmu\ConEmu.xml, $env:APPDATA\ConEmu.xml, $env:TMP\ConEmu
@@ -8,6 +9,15 @@
 
 .Parameter TmpConfigPattern
     Regex pattern to match the temporary config file. Default is '^Con\w+\.xml$'
+
+.Parameter FileExtensions
+    File types to open with Edge by default: html, htm, md, markdown, xml, log, json, and txt.
+
+.Parameter DefaultFileProgId
+    Registered application ProgID for these file types. Default is MSEdgeHTM (Microsoft Edge).
+
+.Parameter SkipFileAssociations
+    Configure ConEmu without changing file associations. PowerShell 7 is required when preparing associations.
 
 .EXAMPLE
     .\Setup-ConEmu-VisualStudio.ps1
@@ -18,7 +28,10 @@
 [CmdletBinding()]
 param(
     [string] $ConEmuConfigPaths = "$env:ProgramFiles\ConEmu\ConEmu.xml, $env:APPDATA\ConEmu.xml, $env:TMP\ConEmu",
-    [string] $TmpConfigPattern = '^Con\w+\.xml$'
+    [string] $TmpConfigPattern = '^Con\w+\.xml$',
+    [string[]] $FileExtensions = @('.html', '.htm', '.md', '.markdown', '.xml', '.log', '.json', '.txt'),
+    [ValidateNotNullOrEmpty()] [string] $DefaultFileProgId = 'MSEdgeHTM',
+    [switch] $SkipFileAssociations
 )
 
 $ErrorActionPreference = 'Stop'
@@ -100,6 +113,24 @@ Assert-MsrResult
 if ($configPathList.Count -eq 0) {
     Show-Error "No ConEmu config file found from input paths: $ConEmuConfigPaths"
     exit 1
+}
+
+if (-not $SkipFileAssociations) {
+    Show-Message "Preparing file associations and checking Windows Shell resolution."
+    $associationTool = Join-Path $PSScriptRoot '../../common/Set-DefaultFileApplication.ps1'
+    if ($PSVersionTable.PSVersion.Major -ge 7) {
+        $associations = @(& $associationTool -Extension $FileExtensions -ProgId $DefaultFileProgId -Confirm:$false)
+        if (@($associations | Where-Object { -not $_.WindowsVerified }).Count -ne 0) {
+            throw 'Windows did not verify every requested file association; ConEmu settings were not changed.'
+        }
+        $associations | Select-Object Extension, EffectiveProgId, WindowsVerified, Changed | Format-Table -AutoSize
+    } else {
+        $pwshCommand = Get-Command pwsh.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1
+        & $pwshCommand.Source -NoProfile -File $associationTool -Extension ($FileExtensions -join ',') -ProgId $DefaultFileProgId -Confirm:$false
+        if ($LASTEXITCODE -ne 0) {
+            throw 'File association setup failed; ConEmu settings were not changed.'
+        }
+    }
 }
 
 Update-ConfigItems $configPathList

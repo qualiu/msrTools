@@ -64,7 +64,8 @@ function Invoke-AssociationScenario {
         [switch] $FailWrite,
         [switch] $FailRestore,
         [switch] $FailCleanup,
-        [switch] $ProgIdOnly
+        [switch] $ProgIdOnly,
+        [switch] $WrongEffectiveChoice
     )
     foreach ($definition in $functionDefinitions) {
         . ([scriptblock]::Create($definition))
@@ -99,6 +100,12 @@ function Invoke-AssociationScenario {
         param($FileExtension)
         $simulation.Events.Add('snapshot')
         return $previous
+    }
+    function Get-EffectiveFileAssociation {
+        param($FileExtension)
+        $target = if ($ProgIdOnly) { 'Example.New' } else { $registration.ProgId }
+        $resolved = if ($WrongEffectiveChoice) { 'Example.Rejected' } elseif ($simulation.Events.Contains('write')) { $target } else { $previous.ProgId }
+        return [pscustomobject]@{ ProgId = $resolved; Executable = 'C:\ExampleApps\viewer.exe' }
     }
     function Register-ApplicationProgId {
         param($Registration)
@@ -192,6 +199,13 @@ Invoke-Case 'A fully configured association is a genuine no-op' {
     Assert-True ($null -eq $outcome.Error) "Unexpected error: $($outcome.Error)"
     Assert-True (($outcome.Events -join ',') -ceq 'plan,snapshot') 'A no-op performed a write.'
     Assert-True (-not $outcome.Result.Changed) 'A no-op reported a change.'
+    Assert-True $outcome.Result.WindowsVerified 'A no-op did not verify Windows association resolution.'
+}
+
+Invoke-Case 'A matching hash cannot hide Windows rejecting the association' {
+    $outcome = Invoke-AssociationScenario -Existing -SameChoice -WrongEffectiveChoice
+    Assert-True ($outcome.Error -match 'Windows did not accept') 'A locally valid hash was mistaken for an effective Windows association.'
+    Assert-True (($outcome.Events -join ',') -ceq 'plan,snapshot,write,notify,restore-choice,notify') 'An ineffective association skipped repair, rollback or notification.'
 }
 
 Invoke-Case 'Missing registration is repaired even when UserChoice already matches' {
@@ -326,6 +340,7 @@ public static class DefaultApplicationTestProbe
         try {
             $setting = & $sourcePath -Extension $extension -ApplicationPath $notepadPath -Confirm:$false
             Assert-True ($setting.Changed -and $setting.HashValid -and $setting.CurrentProgId -ceq $registration.ProgId) 'Live application registration failed.'
+            Assert-True ($setting.WindowsVerified -and $setting.EffectiveProgId -ceq $registration.ProgId) 'Native Windows association verification was not reported.'
             $effectiveExecutable = [DefaultApplicationTestProbe]::GetExecutable($extension)
             Assert-True ($effectiveExecutable -ieq $notepadPath) "Windows resolved '$extension' to '$effectiveExecutable' instead of '$notepadPath'."
             $repeated = & $sourcePath -Extension $extension -ApplicationPath $notepadPath -Confirm:$false

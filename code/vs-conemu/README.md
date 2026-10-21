@@ -16,7 +16,21 @@ Use [ConEmu terminal](https://conemu.github.io/) and [ConEmu VS extension](https
 ### Setup ConEmu with Visual Studio
 
 - Clone this repository.
-- Setup ConEmu by running long command below in a CMD window (replace **`C:\opengit\msrTools`** to your local path at first):
+- Run the setup tool from PowerShell 7, using your existing repository path:
+
+  ```powershell
+  & 'C:\opengit\msrTools\code\vs-conemu\Setup-ConEmu-VisualStudio.ps1'
+  ```
+
+  It prepares per-user Edge associations for `.html`, `.htm`, `.md`, `.markdown`, `.xml`, `.log`, `.json`, and `.txt` before configuring ConEmu.
+  Each association must report `WindowsVerified=True`: the helper checks the effective Windows Shell ProgID and executable, as well as the UserChoice hash.
+  This prevents a first-open application chooser caused by a missing association, including clicks ConEmu handles directly through ShellExecute.
+  A locally matching hash alone is not proof Windows accepts the association. A failed verification preserves the previous association and stops setup.
+  Use `-DefaultFileProgId <registered-ProgID>` for another application, or `-SkipFileAssociations` to change only ConEmu settings.
+  The click callback still prefers a running Visual Studio; otherwise it uses the file's default application.
+
+- To apply only the click callback to a running ConEmu window, use the command below in CMD (replace the repository path first).
+  This macro alone does not prepare file associations:
   - **ConEmuC -GuiMacro SetOption FarGotoEditorPath** `"PowerShell -NoProfile -ExecutionPolicy Bypass -NoLogo -WindowStyle Hidden -File` **`C:\opengit\msrTools\`**[code\vs-conemu\Open-ClickedPathRow-in-VisualStudio.ps1](./Open-ClickedPathRow-in-VisualStudio.ps1) `\"%1\" \"%2\" \"%3\""`
     - If failed due to not found `ConEmuC`: Run [add-user-path](https://marketplace.visualstudio.com/items?itemName=qualiu.vscode-msr#additional-tips) `"C:\Program Files\ConEmu\ConEmu"` then re-run above command.
 - Follow [this **screenshot**](./images/init-setup-conemu-in-vs.png) to setup ConEmu with Visual Studio.

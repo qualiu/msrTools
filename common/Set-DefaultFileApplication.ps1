@@ -21,8 +21,8 @@ IN THE SOFTWARE.
 Sets the current user's default application for one or more file extensions.
 
 .DESCRIPTION
-Associates file extensions with an existing Windows ProgID or an executable. The tool writes a valid, hash-protected UserChoice value used by Windows 10 and Windows 11,
-verifies the live registry timestamp and hash, and notifies Windows Explorer without restarting it.
+Associates file extensions with an existing Windows ProgID or an executable. The tool verifies the UserChoice timestamp and hash,
+notifies Windows Explorer, and checks Windows Shell resolution of the effective ProgID and executable.
 
 Use direct parameters for one or more extensions, or ConfigPath for a JSON file containing multiple mappings. Changes apply only to the current user.
 
@@ -42,7 +42,7 @@ Arguments appended to ApplicationPath. The default passes the selected file as "
 Path to a JSON file containing an associations array. Each entry accepts extensions and exactly one of progId or applicationPath.
 
 .PARAMETER Force
-Rewrites an association even when its current ProgID and UserChoice hash are already valid.
+Rewrites an association even when its UserChoice hash and effective Windows association are already valid.
 
 .EXAMPLE
 pwsh -NoProfile -File Set-DefaultFileApplication.ps1 -Extension .md,.json -ProgId MSEdgeHTM
@@ -105,6 +105,7 @@ if (-not ('DefaultAppAssociation.NativeMethods' -as [type])) {
 using System;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace DefaultAppAssociation
 {
@@ -145,6 +146,22 @@ namespace DefaultAppAssociation
 
         [DllImport("shell32.dll")]
         private static extern void SHChangeNotify(uint eventId, uint flags, IntPtr item1, IntPtr item2);
+
+        [DllImport("shlwapi.dll", CharSet = CharSet.Unicode)]
+        private static extern int AssocQueryString(uint flags, uint kind, string extension,
+            string extra, StringBuilder output, ref uint length);
+
+        public static string QueryAssociation(string extension, uint kind)
+        {
+            uint length = 32768;
+            var output = new StringBuilder((int)length);
+            int result = AssocQueryString(0, kind, extension, null, output, ref length);
+            if (result == unchecked((int)0x80070483) || result == unchecked((int)0x80070002))
+                return null;
+            if (result != 0)
+                Marshal.ThrowExceptionForHR(result);
+            return output.ToString();
+        }
 
         public static void DeleteCurrentUserKey(string subKey)
         {
@@ -712,6 +729,15 @@ function Remove-ApplicationRegistration {
     $Registration.Created = $false
 }
 
+function Get-EffectiveFileAssociation {
+    param([Parameter(Mandatory = $true)] [string] $FileExtension)
+
+    return [pscustomobject]@{
+        ProgId = [DefaultAppAssociation.NativeMethods]::QueryAssociation($FileExtension, 20)
+        Executable = [DefaultAppAssociation.NativeMethods]::QueryAssociation($FileExtension, 2)
+    }
+}
+
 function Set-FileAssociation {
     [CmdletBinding(SupportsShouldProcess)]
     param(
@@ -749,14 +775,19 @@ function Set-FileAssociation {
     }
 
     $previousState = Get-UserChoiceState -FileExtension $normalizedExtension
+    $effectiveState = Get-EffectiveFileAssociation -FileExtension $normalizedExtension
     $needsRegistration = $null -ne $registration -and -not $registration.Exists
-    if (-not $Force -and -not $needsRegistration -and $previousState.ProgId -ceq $effectiveProgId -and $previousState.HashValid) {
+    $windowsVerified = $effectiveState.ProgId -ieq $effectiveProgId -and -not [string]::IsNullOrWhiteSpace($effectiveState.Executable)
+    if (-not $Force -and -not $needsRegistration -and $previousState.ProgId -ceq $effectiveProgId -and $previousState.HashValid -and $windowsVerified) {
         return [pscustomobject]@{
             Extension = $normalizedExtension
             PreviousProgId = $previousState.ProgId
             CurrentProgId = $previousState.ProgId
             TargetProgId = $effectiveProgId
             HashValid = $true
+            EffectiveProgId = $effectiveState.ProgId
+            EffectiveExecutable = $effectiveState.Executable
+            WindowsVerified = $true
             Changed = $false
         }
     }
@@ -766,6 +797,7 @@ function Set-FileAssociation {
     $currentState = $previousState
     if ($PSCmdlet.ShouldProcess($normalizedExtension, "Set default application to '$effectiveProgId'")) {
         $choiceWriteAttempted = $false
+        $notificationSent = $false
         try {
             if ($needsRegistration) {
                 Register-ApplicationProgId -Registration $registration
@@ -773,6 +805,12 @@ function Set-FileAssociation {
             $choiceWriteAttempted = $true
             $currentState = Set-UserChoiceValue -FileExtension $normalizedExtension -TargetProgId $effectiveProgId -AdditionalValues $previousState.Values
             Send-AssociationChangeNotification
+            $notificationSent = $true
+            $effectiveState = Get-EffectiveFileAssociation -FileExtension $normalizedExtension
+            $windowsVerified = $effectiveState.ProgId -ieq $effectiveProgId -and -not [string]::IsNullOrWhiteSpace($effectiveState.Executable)
+            if (-not $windowsVerified) {
+                throw "Windows did not accept '$effectiveProgId' for '$normalizedExtension'. Effective ProgID: '$($effectiveState.ProgId)'."
+            }
         } catch {
             $operationError = $_
             $restoreErrors = [Collections.Generic.List[string]]::new()
@@ -788,6 +826,13 @@ function Set-FileAssociation {
                     Remove-ApplicationRegistration -Registration $registration
                 } catch {
                     $restoreErrors.Add("Application registration: $($_.Exception.Message)")
+                }
+            }
+            if ($notificationSent -and $restoreErrors.Count -eq 0) {
+                try {
+                    Send-AssociationChangeNotification
+                } catch {
+                    $restoreErrors.Add("Association notification: $($_.Exception.Message)")
                 }
             }
             if ($restoreErrors.Count -ne 0) {
@@ -810,6 +855,9 @@ function Set-FileAssociation {
         CurrentProgId = $currentState.ProgId
         TargetProgId = $effectiveProgId
         HashValid = $currentState.HashValid
+        EffectiveProgId = $effectiveState.ProgId
+        EffectiveExecutable = $effectiveState.Executable
+        WindowsVerified = $windowsVerified
         Changed = $changed
     }
 }
