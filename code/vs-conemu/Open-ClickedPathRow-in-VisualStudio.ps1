@@ -12,6 +12,7 @@
     Column number (optional).
 
 .EXAMPLE
+    .\Open-ClickedPathRow-in-VisualStudio.ps1 C:/code/readme.md:2-100
     .\Open-ClickedPathRow-in-VisualStudio.ps1 C:\code\my-code.cs 100 23
     .\Open-ClickedPathRow-in-VisualStudio.ps1 C:\code\my-code.cs:100:23:
     .\Open-ClickedPathRow-in-VisualStudio.ps1 C:\code\my-code.cs:100:
@@ -55,7 +56,7 @@ function Get-FilePathRowColumn {
                 }
             }
             elseif ([string]::IsNullOrWhiteSpace($filePath)) {
-                $filePath = $arg
+                $filePath = $arg -replace '(:\d+)-.*$', '$1'
             }
         }
     }
